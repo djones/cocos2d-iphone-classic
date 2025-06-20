@@ -48,7 +48,7 @@
 
 static BOOL	reversePriority;			// default is NO;
 
-static NSComparisonResult sortByPriority(const void * first, const void * second);
+static int sortByPriority(const void * first, const void * second);
 static BOOL eval(int v, ccOperators op, int arg);
 static ccOperators calcOp1(ccOperators compOp);
 static BOOL isItAnd(ccOperators compOp);
@@ -134,7 +134,7 @@ static CCTouchDispatcher *sharedDispatcher = nil;
 #pragma mark -
 #pragma mark - Changing priority of the added handlers
 
-static NSComparisonResult sortByPriority(const void * first, const void * second)
+static int sortByPriority(const void * first, const void * second)
 {
     id fId = ((id *) first)[0];  // Lord, Have Mercy on Us!
     id sId = ((id *) second)[0]; // Amen.
@@ -145,19 +145,19 @@ static NSComparisonResult sortByPriority(const void * first, const void * second
 	int fP = f.priority;
 	int sP = s.priority;
 
-	if (fP == sP) return NSOrderedSame;
+	if (fP == sP) return 0;
 
 	if (reversePriority){
 		if (fP > sP)	// if p1 > p2 > p3   order:  p1,p2,p3
-			return NSOrderedAscending;
+			return -1;
 		else
-			return NSOrderedDescending;
+			return 1;
 	}
 	else{ // default
 		if (fP < sP)   // if p1 < p2 < p3   order:  p1,p2,p3
-			return NSOrderedAscending;
+			return -1;
 		else
-			return NSOrderedDescending;
+			return 1;
 	}
 }
 
