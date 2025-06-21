@@ -53,7 +53,7 @@
 
 +(id)ribbonWithWidth:(float)w image:(NSString*)path length:(float)l color:(ccColor4B)color fade:(float)fade
 {
-	self = [[[self alloc] initWithWidth:w image:path length:l color:color fade:fade] autorelease];
+    self = [[[self alloc] initWithWidth:w image:path length:l color:color fade:fade] autorelease];
 	return self;
 }
 

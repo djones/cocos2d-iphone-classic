@@ -136,7 +136,7 @@
     }
 
 #ifdef __IPHONE_OS_VERSION_MAX_ALLOWED
-    if( UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad ) {
+    if( [UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad ) {
         if( CC_CONTENT_SCALE_FACTOR() == 2 )
             [tex setResolutionType:kCCResolutioniPadRetinaDisplay];
         else

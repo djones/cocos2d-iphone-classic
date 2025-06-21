@@ -211,7 +211,7 @@ CGFloat	__ccContentScaleFactor = 1;
 			glMatrixMode(GL_PROJECTION);
 			glLoadIdentity();
 			// accommodate iPad retina while keep backward compatibility
-            if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad &&
+            if ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad &&
                 [[UIScreen mainScreen] scale] > 1.0 )
             {
                 gluPerspective(60, (GLfloat)size.width/size.height, zeye-size.height/2, zeye+size.height/2 );
@@ -732,7 +732,7 @@ CGFloat	__ccContentScaleFactor = 1;
 	CCLOG(@"cocos2d: Frame interval: %d", frameInterval);
 
 	displayLink = [NSClassFromString(@"CADisplayLink") displayLinkWithTarget:self selector:@selector(mainLoop:)];
-	[displayLink setFrameInterval:frameInterval];
+	[(CADisplayLink*) displayLink setFrameInterval:frameInterval];
     if (runLoopCommon_)
             	[displayLink addToRunLoop:[NSRunLoop currentRunLoop] forMode:NSRunLoopCommonModes];
     else

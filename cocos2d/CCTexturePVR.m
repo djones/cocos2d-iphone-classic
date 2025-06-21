@@ -434,7 +434,7 @@ typedef struct _PVRTexHeader
                     
 					NSUInteger neededBytes = (4 - mod ) / (bpp/8);
 					printf("\n");
-					NSLog(@"cocos2d: WARNING. Current texture size=(%d,%d). Convert it to size=(%d,%d) in order to save memory", width_, height_, width_ + neededBytes, height_ );
+                    NSLog(@"cocos2d: WARNING. Current texture size=(%d,%d). Convert it to size=(%lu,%d) in order to save memory", width_, height_, (unsigned long)(width_ + neededBytes), height_ );
 					NSLog(@"cocos2d: WARNING: File: %@", [path lastPathComponent] );
 					NSLog(@"cocos2d: WARNING: For further info visit: http://www.cocos2d-iphone.org/forum/topic/31092");
 					printf("\n");

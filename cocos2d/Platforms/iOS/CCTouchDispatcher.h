@@ -392,23 +392,23 @@ typedef enum
 /** returns priority of the delegate or if the delegate does not exist, returns NSNotFound
  @since v1.1.0
  */
-- (int) retrievePriorityField:(id) delegate type:(ccDispatcherDelegateType)type;
+- (NSUInteger) retrievePriorityField:(id) delegate type:(ccDispatcherDelegateType)type;
 
 /** returns tag of the delegate or if the delegate does not exist, returns NSNotFound
  @since v1.1.0
  */
-- (int) retrieveTagField:(id) delegate type:(ccDispatcherDelegateType)type;
+- (NSUInteger) retrieveTagField:(id) delegate type:(ccDispatcherDelegateType)type;
 
 /** returns value of the disable field or if the delegate does not exist, returns NSNotFound
  @since v1.1.0
  */
--(int) retrieveDisableField:(id) delegate type:(ccDispatcherDelegateType)type;
+-(NSUInteger) retrieveDisableField:(id) delegate type:(ccDispatcherDelegateType)type;
 
 /** returns value of the field or if the delegate does not exist, returns NSNotFound
  Notice: It is generic functions covering all sugar 'retrieve*Field(.)' functions
  @since v1.1.0
  */
-- (int) retrieveField:(ccHandlerFieldName)field delegate:(id)delegate type:(ccDispatcherDelegateType)type;
+- (NSUInteger) retrieveField:(ccHandlerFieldName)field delegate:(id)delegate type:(ccDispatcherDelegateType)type;
 
 //--------------------------------
 // disabling of the delegate(s)
@@ -470,7 +470,7 @@ disable:(int)yesOrNo type:(ccDispatcherDelegateType)type;
  returns number of delegates removed
  @since v1.1.0
  */
-- (int) removeAllDelegates:(ccDispatcherDelegateType)type;
+- (NSUInteger) removeAllDelegates:(ccDispatcherDelegateType)type;
 
 /** removes all delegates of the given type with specified tag
  returns number of delegates removed
@@ -478,7 +478,7 @@ disable:(int)yesOrNo type:(ccDispatcherDelegateType)type;
  event loop ends.
  @since v1.1.0
  */
-- (int) removeDelegatesWithTag:(int)tag delay:(BOOL)yesOrNO type:(ccDispatcherDelegateType)type;
+- (NSUInteger) removeDelegatesWithTag:(int)tag delay:(BOOL)yesOrNO type:(ccDispatcherDelegateType)type;
 
 /** removes all delegates of the given type with specified priority
  returns number of delegates removed
@@ -486,7 +486,7 @@ disable:(int)yesOrNo type:(ccDispatcherDelegateType)type;
  event loop ends.
  @since v1.1.0
  */
-- (int) removeDelegatesWithPriority:(int)priority delay:(BOOL)yesOrNO type:(ccDispatcherDelegateType)type;
+- (NSUInteger) removeDelegatesWithPriority:(int)priority delay:(BOOL)yesOrNO type:(ccDispatcherDelegateType)type;
 
 /** removes all delegates of the given type marked for removal by the following functions used with kCCRemoveToDo field:
  setField:kCCRemoveToDo ... or/and setDelegatesField:kCCRemoveToDo ... or remove* functions with delay:YES
@@ -495,14 +495,14 @@ disable:(int)yesOrNo type:(ccDispatcherDelegateType)type;
  If function is called in the touch callback it returns -1. (Delegates will be removed at the end of the event loop)
  @since v1.1.0
  */
-- (int) removeToDoDelegates:(ccDispatcherDelegateType)type;
+- (NSUInteger) removeToDoDelegates:(ccDispatcherDelegateType)type;
 
 /** power function: covers all 'removeDelegates*' functions. Removes delegates of the given type
  for which a given field contains desired value.
  The value of the field is evaluated against arg1 and arg2 using (ccOperators)op.
  @since v1.1.0
  */
-- (int) removeDelegatesWithField:(ccHandlerFieldName)fieldName
+- (NSUInteger) removeDelegatesWithField:(ccHandlerFieldName)fieldName
                             arg1:(int)leftEndPoint arg2:(int)rightEndPoint operator:(ccOperators)op delay:(BOOL)yesOrNO type:(ccDispatcherDelegateType)type;
 
 //-------------------------------------------------------------------------

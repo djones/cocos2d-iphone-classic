@@ -454,17 +454,17 @@
 {
     [super updateColor];
 
-	float h = ccpLength(vector_);
+    CGFloat h = ccpLength(vector_);
     if (h == 0)
 		return;
 
-	double c = sqrt(2);
+    CGFloat c = sqrt(2);
     CGPoint u = ccp(vector_.x / h, vector_.y / h);
 
 	// Compressed Interpolation mode
 	if( compressedInterpolation_ ) {
-		float h2 = 1 / ( fabsf(u.x) + fabsf(u.y) );
-		u = ccpMult(u, h2 * (float)c);
+        CGFloat h2 = 1 / ( fabs(u.x) + fabs(u.y) );
+		u = ccpMult(u, h2 * c);
 	}
 
 	float opacityf = (float)opacity_/255.0f;

@@ -228,10 +228,10 @@ static int sortByPriority(const void * first, const void * second)
 //-----------------------------------------------------------
 
 //  removes all delegates of the given type
--(int) forceRemoveAllObjects:(ccDispatcherDelegateType) delegateType
+-(NSUInteger) forceRemoveAllObjects:(ccDispatcherDelegateType) delegateType
 {
 	CCArray *array = [self arrayForType:delegateType];
-	int numberOfObjectsRemoved = [array count];
+    NSUInteger numberOfObjectsRemoved = [array count];
 
 	[array removeAllObjects];
 
@@ -240,7 +240,7 @@ static int sortByPriority(const void * first, const void * second)
 
 #pragma mark TouchDispatcher - removeAllDelegates
 
--(int) removeAllDelegates:(ccDispatcherDelegateType) type
+-(NSUInteger) removeAllDelegates:(ccDispatcherDelegateType) type
 {
 	if ( locked ) {
 		return ( [self removeDelegatesWithField:kCCNotRemoved arg1:CC_UNUSED_ARGUMENT arg2:CC_UNUSED_ARGUMENT operator:kCCTRUE delay:YES type:type] );
@@ -268,7 +268,7 @@ static int sortByPriority(const void * first, const void * second)
 	CCArray *array = [self arrayForType:delegateType];
 	ccArray *arrayData = array->data;
 
-	for (int i = arrayData->num - 1; i>=0; --i) {
+    for (NSUInteger i = arrayData->num - 1; i>=0; --i) {
 
 		handler = arrayData->arr[i]; // get handler
 
@@ -519,7 +519,7 @@ static int sortByPriority(const void * first, const void * second)
 		[self forceSetPriority];} // priority flags are cleared here
 }
 
-- (int) removeToDoDelegates:(ccDispatcherDelegateType)type; // API
+- (NSUInteger) removeToDoDelegates:(ccDispatcherDelegateType)type; // API
 {
 	int ret = -1;
 
@@ -995,12 +995,12 @@ static BOOL evaluate(int v, ccOperators op1, int v1, BOOL useAnd, ccOperators op
 #pragma mark TouchDispatcher  - retrieveField
 
 // returns value of the field or NSNotFound when delegate does not exist
-- (int) retrieveField:(ccHandlerFieldName)field delegate:(id)delegate type:(ccDispatcherDelegateType)delegateType // power function
+- (NSUInteger) retrieveField:(ccHandlerFieldName)field delegate:(id)delegate type:(ccDispatcherDelegateType)delegateType // power function
 {
 	NSAssert(delegate != nil, @"Got nil touch delegate!");
 
 	BOOL notFound = YES;
-	int value = CC_SEARCH_NOT_SUCCESSFUL;
+    NSUInteger value = CC_SEARCH_NOT_SUCCESSFUL;
 
 	CCArray *array = [self arrayForType:delegateType];
 	ccHandlersToDoType type = [self toDoAddType:delegateType];
@@ -1131,17 +1131,17 @@ static BOOL evaluate(int v, ccOperators op1, int v1, BOOL useAnd, ccOperators op
 
 // helper functions based on the generic 'retrieveField' function
 
--(int) retrievePriorityField:(id)delegate type:(ccDispatcherDelegateType)type
+-(NSUInteger) retrievePriorityField:(id)delegate type:(ccDispatcherDelegateType)type
 {
 	return ( [self retrieveField:kCCPriority delegate:delegate type:type] );
 }
 // returns value of the field or NSNotFound when delegate does not exist
--(int) retrieveTagField:(id)delegate type:(ccDispatcherDelegateType)type
+-(NSUInteger) retrieveTagField:(id)delegate type:(ccDispatcherDelegateType)type
 {
 	return ( [self retrieveField:kCCTag delegate:delegate type:type] );
 }
 // returns value of the field or NSNotFound when delegate does not exist
--(int) retrieveDisableField:(id)delegate type:(ccDispatcherDelegateType)type
+-(NSUInteger) retrieveDisableField:(id)delegate type:(ccDispatcherDelegateType)type
 {
 	return ( [self retrieveField:kCCDisable delegate:delegate type:type] );
 }
@@ -1209,14 +1209,14 @@ static BOOL evaluate(int v, ccOperators op1, int v1, BOOL useAnd, ccOperators op
                                arg1:CC_UNUSED_ARGUMENT arg2:CC_UNUSED_ARGUMENT operator:kCCTRUE fieldToAlter:r withValue:YES]);
 }
 
-- (int) removeDelegatesWithTag:(int)tag delay:(BOOL)yesOrNo type:(ccDispatcherDelegateType)delegateType
+- (NSUInteger) removeDelegatesWithTag:(int)tag delay:(BOOL)yesOrNo type:(ccDispatcherDelegateType)delegateType
 {
 	ccHandlerFieldName r = kCCRemove; if (yesOrNo) r = kCCRemoveToDo;
 	return ([self alterTouchHandler:delegateType delegate:nil fieldToSearch:kCCTag
                                arg1:tag arg2:tag operator:kCCEQ fieldToAlter:r withValue:YES]);
 }
 
-- (int) removeDelegatesWithPriority:(int)priority delay:(BOOL)yesOrNo type:(ccDispatcherDelegateType)delegateType
+- (NSUInteger) removeDelegatesWithPriority:(int)priority delay:(BOOL)yesOrNo type:(ccDispatcherDelegateType)delegateType
 {
 	ccHandlerFieldName r = kCCRemove; if (yesOrNo) r = kCCRemoveToDo;
 	return ([self alterTouchHandler:delegateType delegate:nil fieldToSearch:kCCPriority
@@ -1224,7 +1224,7 @@ static BOOL evaluate(int v, ccOperators op1, int v1, BOOL useAnd, ccOperators op
 }
 
 // Only For Eagles - Power API Function
-- (int) removeDelegatesWithField:(ccHandlerFieldName)fieldToSearch arg1:(int)leftV arg2:(int)rightV operator:(ccOperators)op
+- (NSUInteger) removeDelegatesWithField:(ccHandlerFieldName)fieldToSearch arg1:(int)leftV arg2:(int)rightV operator:(ccOperators)op
                            delay:(BOOL)yesOrNo type:(ccDispatcherDelegateType)delegateType
 {
 	if (fieldToSearch == kCCDelegate) return -1; // user cannot search this field
@@ -1400,8 +1400,8 @@ static BOOL evaluate(int v, ccOperators op1, int v1, BOOL useAnd, ccOperators op
 }
 
 typedef struct{
-	unsigned int targetedHandlersCount;
-	unsigned int standardHandlersCount;
+    NSUInteger targetedHandlersCount;
+    NSUInteger standardHandlersCount;
 	BOOL needsMutableSet;
 	id mutableTouches;
 	struct ccTouchHandlerHelperData helper;

@@ -164,7 +164,7 @@ NSInteger ccLoadFileIntoMemory(const char *filename, unsigned char **out)
 	NSString *ret = nil;
 
 	// iPad?
-	if( UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad)
+    if( [UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad)
 	{
 		// Retina Display ?
 		if( CC_CONTENT_SCALE_FACTOR() == 2 ) {
@@ -257,7 +257,7 @@ NSInteger ccLoadFileIntoMemory(const char *filename, unsigned char **out)
 {
 	NSString *ret = nil;
 
-	if( UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad )
+    if( [UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad )
 	{
 		if( CC_CONTENT_SCALE_FACTOR() == 2 )
 			ret = [self removeSuffix:__suffixiPadRetinaDisplay fromPath:path];

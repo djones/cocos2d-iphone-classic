@@ -770,7 +770,7 @@ const uint32_t	kZoomActionTag = 0xc0c05002;
 -(void) selected
 {
 	[super selected];
-	[[subItems_ objectAtIndex:selectedIndex_] selected];
+    [(CCMenuItem*)[subItems_ objectAtIndex:selectedIndex_] selected];
 }
 
 -(void) unselected

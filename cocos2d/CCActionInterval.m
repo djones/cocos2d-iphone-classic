@@ -486,7 +486,7 @@
 {
 	[super startWithTarget:aTarget];
 
-	startAngle_ = [(CCNode*)target_ rotation];
+	startAngle_ = [target_ rotation];
 	if (startAngle_ > 0)
 		startAngle_ = fmodf(startAngle_, 360.0f);
 	else
@@ -534,7 +534,7 @@
 -(void) startWithTarget:(id)aTarget
 {
 	[super startWithTarget:aTarget];
-	startAngle_ = [(CCNode*)target_ rotation];
+	startAngle_ = [target_ rotation];
 }
 
 -(void) update: (ccTime) t
@@ -579,7 +579,7 @@
 -(void) startWithTarget:(CCNode *)aTarget
 {
 	[super startWithTarget:aTarget];
-	startPosition_ = [(CCNode*)target_ position];
+	startPosition_ = [target_ position];
 	delta_ = ccpSub( endPosition_, startPosition_ );
 }
 
@@ -762,7 +762,7 @@
 -(void) startWithTarget:(id)aTarget
 {
 	[super startWithTarget:aTarget];
-	startPosition_ = [(CCNode*)target_ position];
+	startPosition_ = [target_ position];
 }
 
 -(void) update: (ccTime) t
@@ -844,7 +844,7 @@ static inline float bezierat( float a, float b, float c, float d, ccTime t )
 -(void) startWithTarget:(id)aTarget
 {
 	[super startWithTarget:aTarget];
-	startPosition_ = [(CCNode*)target_ position];
+	startPosition_ = [target_ position];
 }
 
 -(void) update: (ccTime) t
@@ -1340,7 +1340,7 @@ static inline float bezierat( float a, float b, float c, float d, ccTime t )
 -(void) startWithTarget:(id)aTarget
 {
 	[super startWithTarget:aTarget];
-	CCSprite *sprite = target_;
+	CCSprite *sprite = (CCSprite*)target_;
 
 	[origFrame_ release];
 
@@ -1353,7 +1353,7 @@ static inline float bezierat( float a, float b, float c, float d, ccTime t )
 -(void) stop
 {
 	if( restoreOriginalFrame_ ) {
-		CCSprite *sprite = target_;
+		CCSprite *sprite = (CCSprite*)target_;
 		[sprite setDisplayFrame:origFrame_];
 	}
 

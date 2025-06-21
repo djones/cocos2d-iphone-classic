@@ -140,7 +140,7 @@
 		glBlendFunc( blendFunc_.src, blendFunc_.dst );
 
 
-	glDrawArrays(GL_POINTS, 0, particleIdx);
+	glDrawArrays(GL_POINTS, 0, (GLsizei)particleIdx);
 
 	// restore blend state
 	if( newBlend )

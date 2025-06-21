@@ -35,12 +35,14 @@ enum {
 	kCCActionTagInvalid = -1,
 };
 
+@class CCNode;
+
 /** Base class for CCAction objects.
  */
 @interface CCAction : NSObject <NSCopying>
 {
-	id			originalTarget_;
-	id			target_;
+	CCNode*		originalTarget_;
+	CCNode*		target_;
 	NSInteger	tag_;
 }
 
@@ -145,7 +147,6 @@ enum {
 -(id) initWithAction: (CCActionInterval*) action speed:(float)rate;
 @end
 
-@class CCNode;
 /** CCFollow is an action that "follows" a node.
 
  Eg:

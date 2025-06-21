@@ -328,7 +328,7 @@
 	{
 		j = i;
 		// continue moving element downwards while order is descending
-		while( j>0 && ( (int)([x[j-1] performSelector:selector withObject:x[j]]) == NSOrderedDescending) )
+		while( j>0 && ( (int)([x[j-1] performSelector:selector withObject:x[j]]) == 1) )
 		{
 			temp = x[j];
 			x[j] = x[j-1];
