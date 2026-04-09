@@ -59,6 +59,14 @@ enum {
 /** creates a CCMenu with it's items */
 + (id) menuWithItems: (CCMenuItem*) item, ... NS_REQUIRES_NIL_TERMINATION;
 
+/** creates a CCMenu with an array of items. Use this in preference to
+ * +menuWithItems: — the variadic version is unsafe on Apple ARM64 in
+ * optimized builds (see the implementation for details). */
++ (id) menuWithArray: (NSArray*) items;
+
+/** initializes a CCMenu with an array of items. */
+- (id) initWithArray: (NSArray*) items;
+
 /** initializes a CCMenu with it's items */
 - (id) initWithItems: (CCMenuItem*) item vaList: (va_list) args;
 

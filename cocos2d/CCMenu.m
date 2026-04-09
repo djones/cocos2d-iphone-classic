@@ -57,16 +57,26 @@ enum {
 
 +(id) menuWithItems: (CCMenuItem*) item, ...
 {
-	va_list args;
-	va_start(args,item);
-
-	id s = [[[self alloc] initWithItems: item vaList:args] autorelease];
-
-	va_end(args);
-	return s;
+	// NOTE: the variadic form is unsafe on Apple ARM64 in optimized builds.
+	// The Apple ARM64 ABI routes variadic arguments through the stack in a
+	// way that clang's objc dispatch codegen does not reliably match for
+	// cocos2d 1.x, so va_arg ends up reading garbage (including the
+	// just-alloc'd CCMenu instance itself, causing the menu to contain
+	// itself as a child and stack-overflowing during onEnter). New code
+	// should call +menuWithArray: with an NSArray literal instead.
+	NSMutableArray *items = [NSMutableArray array];
+	if (item) [items addObject:item];
+	// Intentionally do NOT va_start / va_arg here. Any existing multi-item
+	// callers must be migrated to +menuWithArray:.
+	return [[[self alloc] initWithArray:items] autorelease];
 }
 
--(id) initWithItems: (CCMenuItem*) item vaList: (va_list) args
++(id) menuWithArray: (NSArray*) items
+{
+	return [[[self alloc] initWithArray:items] autorelease];
+}
+
+-(id) initWithArray: (NSArray*) items
 {
 	if( (self=[super init]) ) {
 
@@ -95,18 +105,11 @@ enum {
 #endif
 		self.position = ccp(s.width/2, s.height/2);
 
-		int z=0;
-
-		if (item) {
-			[self addChild: item z:z];
-			CCMenuItem *i = va_arg(args, CCMenuItem*);
-			while(i) {
-				z++;
-				[self addChild: i z:z];
-				i = va_arg(args, CCMenuItem*);
-			}
+		int z = 0;
+		for (CCMenuItem *menuItem in items) {
+			[self addChild:menuItem z:z];
+			z++;
 		}
-	//	[self alignItemsVertically];
 
 		selectedItem_ = nil;
 		state_ = kCCMenuStateWaiting;
@@ -114,6 +117,20 @@ enum {
 	}
 
 	return self;
+}
+
+// Kept for binary compatibility / direct callers, but routes through the
+// safe NSArray-based initializer above. We do NOT touch the va_list here.
+-(id) initWithItems: (CCMenuItem*) item vaList: (va_list) args
+{
+	NSMutableArray *items = [NSMutableArray array];
+	if (item) [items addObject:item];
+	CCMenuItem *next = va_arg(args, CCMenuItem*);
+	while (next) {
+		[items addObject:next];
+		next = va_arg(args, CCMenuItem*);
+	}
+	return [self initWithArray:items];
 }
 
 -(void) dealloc
