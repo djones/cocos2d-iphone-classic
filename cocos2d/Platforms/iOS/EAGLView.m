@@ -75,6 +75,11 @@ Copyright (C) 2008 Apple Inc. All Rights Reserved.
 #import "../../CCConfiguration.h"
 #import "../../Support/OpenGL_Internal.h"
 
+// Parent-repo header. The motorbike Xcode target compiles these cocos2d
+// files alongside our own code, so this resolves through the standard
+// header search paths.
+#import "MetalPresenter.h"
+
 
 //CLASS IMPLEMENTATIONS:
 
@@ -83,7 +88,18 @@ Copyright (C) 2008 Apple Inc. All Rights Reserved.
 - (unsigned int) convertPixelFormat:(NSString*) pixelFormat;
 @end
 
+// On iOS 26, CAEAGLLayer presentation is effectively paced at 60 Hz through
+// a GL-ES-on-Metal compatibility shim, making it impossible to sustain
+// 120 FPS on ProMotion devices with this cocos2d fork. We now back the view
+// with CAMetalLayer instead, render cocos2d into an IOSurface-backed FBO
+// owned by a MetalPresenter, and present through the CAMetalLayer's real
+// Metal swapchain (which supports true 120 Hz triple-buffering). The ES1
+// GL pipeline inside cocos2d is unchanged — only the surface the GL
+// renders into and the mechanism that presents it are different.
 @implementation EAGLView
+{
+	MetalPresenter *metalPresenter_;
+}
 
 @synthesize surfaceSize=size_;
 @synthesize pixelFormat=pixelformat_, depthFormat=depthFormat_;
@@ -93,7 +109,7 @@ Copyright (C) 2008 Apple Inc. All Rights Reserved.
 
 + (Class) layerClass
 {
-	return [CAEAGLLayer class];
+	return [CAMetalLayer class];
 }
 
 + (id) viewWithFrame:(CGRect)frame
@@ -171,25 +187,40 @@ Copyright (C) 2008 Apple Inc. All Rights Reserved.
 
 -(BOOL) setupSurfaceWithSharegroup:(EAGLSharegroup*)sharegroup
 {
-	CAEAGLLayer *eaglLayer = (CAEAGLLayer *)self.layer;
-
-	eaglLayer.opaque = YES;
-	eaglLayer.drawableProperties = [NSDictionary dictionaryWithObjectsAndKeys:
-									[NSNumber numberWithBool:preserveBackbuffer_], kEAGLDrawablePropertyRetainedBacking,
-									pixelformat_, kEAGLDrawablePropertyColorFormat, nil];
-
-
-	renderer_ = [[ES1Renderer alloc] initWithDepthFormat:depthFormat_
-										 withPixelFormat:[self convertPixelFormat:pixelformat_]
-										  withSharegroup:sharegroup
-									   withMultiSampling:multiSampling_
-									 withNumberOfSamples:requestedSamples_];
-	if (!renderer_)
+	// Layer is now a CAMetalLayer, not CAEAGLLayer — skip the old EAGL
+	// drawableProperties / renderbufferStorage:fromDrawable: path and
+	// stand up an EAGLContext + MetalPresenter pair instead.
+	context_ = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES1
+									 sharegroup:sharegroup];
+	if (!context_ || ![EAGLContext setCurrentContext:context_]) {
+		CCLOG(@"cocos2d: EAGLView: could not create ES1 context");
 		return NO;
+	}
 
-	context_ = [renderer_ context];
+	// Backing size in PIXELS. Our view frame is in points and the layer's
+	// contentsScale is the points→pixels factor (2x or 3x Retina).
+	CGFloat scale = [[UIScreen mainScreen] scale];
+	CGSize pixelSize = CGSizeMake(self.bounds.size.width * scale,
+								 self.bounds.size.height * scale);
+	size_ = pixelSize;
 
-	discardFramebufferSupported_ = [[CCConfiguration sharedConfiguration] supportsDiscardFramebuffer];
+	CAMetalLayer *metalLayer = (CAMetalLayer *)self.layer;
+	metalPresenter_ = [[MetalPresenter alloc] initWithLayer:metalLayer
+													   size:pixelSize
+													  scale:scale
+												  glContext:context_];
+	if (!metalPresenter_) {
+		CCLOG(@"cocos2d: EAGLView: MetalPresenter init failed");
+		return NO;
+	}
+
+	// Bind slot 0 so the very first drawScene renders into it.
+	[metalPresenter_ bindCurrentFramebuffer];
+
+	// Set the GL viewport to match the backing size.
+	glViewport(0, 0, (GLsizei)pixelSize.width, (GLsizei)pixelSize.height);
+
+	discardFramebufferSupported_ = NO; // Metal path doesn't use discard hints.
 
 	return YES;
 }
@@ -198,102 +229,81 @@ Copyright (C) 2008 Apple Inc. All Rights Reserved.
 {
 	CCLOGINFO(@"cocos2d: deallocing %@", self);
 
-
+	// Metal path: metalPresenter_ is an ARC-compiled class but THIS file
+	// is MRC, so we manage its reference manually.
+	[metalPresenter_ release];
+	// Legacy renderer_ ivar is never populated on the Metal path;
+	// release-to-nil is a no-op.
 	[renderer_ release];
+	[context_ release];
 	[super dealloc];
 }
 
 - (void) layoutSubviews
 {
-    //checking whether size has changed, because changes in uikit elements also trigger layoutSubviews
-    CAEAGLLayer* layer= (CAEAGLLayer*) self.layer;
+    [super layoutSubviews];
 
-    //frame is always in portrait
-    CGSize layerSize = self.layer.frame.size;
-    CGFloat zRotation = ([[layer valueForKeyPath:@"transform.rotation.z"] floatValue] * 180.f) / M_PI;
+    // Checking whether size has changed — UIKit also triggers layoutSubviews
+    // for unrelated reasons and we don't want to rebuild the pool each time.
+    CGFloat scale = [[UIScreen mainScreen] scale];
+    CGSize pixelSize = CGSizeMake(self.bounds.size.width * scale,
+                                  self.bounds.size.height * scale);
 
-    //landscape switch width and height
-    if (zRotation == 90.f || zRotation == -90.f)
-    {
-        CGFloat temp;
-        temp = layerSize.height;
-        layerSize.height = layerSize.width;
-        layerSize.width = temp;
+    BOOL sizeChanged = (pixelSize.width != size_.width || pixelSize.height != size_.height);
+    if (!sizeChanged && !first_) return;
+
+    first_ = NO;
+
+    [EAGLContext setCurrentContext:context_];
+
+    if (![metalPresenter_ resizeTo:pixelSize scale:scale]) {
+        CCLOG(@"cocos2d: EAGLView: MetalPresenter resize failed");
+        return;
     }
-    
-    //when loading from nib size is already layerSize, projection needs to be set once
-    if ((layerSize.width != size_.width || layerSize.height != size_.height) || first_)
-    {
-        first_ = NO; 
-        [renderer_ resizeFromLayer:(CAEAGLLayer*)self.layer];
 
-        size_ = [renderer_ backingSize];
+    size_ = pixelSize;
+    [metalPresenter_ bindCurrentFramebuffer];
+    glViewport(0, 0, (GLsizei)pixelSize.width, (GLsizei)pixelSize.height);
 
-        // Issue #914 #924
-        CCDirector *director = [CCDirector sharedDirector];
-        [director reshapeProjection:size_];
+    // Issue #914 #924
+    CCDirector *director = [CCDirector sharedDirector];
+    [director reshapeProjection:size_];
 
-        // Avoid flicker. Issue #350
-        [director performSelectorOnMainThread:@selector(drawScene) withObject:nil waitUntilDone:YES];
-    }
+    // Avoid flicker. Issue #350
+    [director performSelectorOnMainThread:@selector(drawScene) withObject:nil waitUntilDone:YES];
 }
 
 - (void) swapBuffers
 {
-	// IMPORTANT:
-	// - preconditions
-	//	-> context_ MUST be the OpenGL context
-	//	-> renderbuffer_ must be the the RENDER BUFFER
-
-#ifdef __IPHONE_4_0
-
-	if (multiSampling_)
-	{
-		/* Resolve from msaaFramebuffer to resolveFramebuffer */
-		//glDisable(GL_SCISSOR_TEST);
-		glBindFramebufferOES(GL_READ_FRAMEBUFFER_APPLE, [renderer_ msaaFrameBuffer]);
-		glBindFramebufferOES(GL_DRAW_FRAMEBUFFER_APPLE, [renderer_ defaultFrameBuffer]);
-		glResolveMultisampleFramebufferAPPLE();
-	}
-
-	if( discardFramebufferSupported_)
-	{
-		if (multiSampling_)
-		{
-			if (depthFormat_)
-			{
-				GLenum attachments[] = {GL_COLOR_ATTACHMENT0_OES, GL_DEPTH_ATTACHMENT_OES};
-				glDiscardFramebufferEXT(GL_READ_FRAMEBUFFER_APPLE, 2, attachments);
-			}
-			else
-			{
-				GLenum attachments[] = {GL_COLOR_ATTACHMENT0_OES};
-				glDiscardFramebufferEXT(GL_READ_FRAMEBUFFER_APPLE, 1, attachments);
-			}
-
-			glBindRenderbufferOES(GL_RENDERBUFFER_OES, [renderer_ colorRenderBuffer]);
-
-		}
-
-		// not MSAA
-		else if (depthFormat_ ) {
-			GLenum attachments[] = { GL_DEPTH_ATTACHMENT_OES};
-			glDiscardFramebufferEXT(GL_FRAMEBUFFER_OES, 1, attachments);
-		}
-	}
-
-#endif // __IPHONE_4_0
-	if(![context_ presentRenderbuffer:GL_RENDERBUFFER_OES])
-	CCLOG(@"cocos2d: Failed to swap renderbuffer in %s\n", __FUNCTION__);
+	// Metal path: hand the current slot's IOSurface to a Metal blit
+	// encoder, present the resulting drawable, and advance to the next
+	// slot (with its FBO now bound for the next frame). This takes the
+	// place of the old -[EAGLContext presentRenderbuffer:] call.
+	[metalPresenter_ presentAndAdvance];
 
 #if COCOS2D_DEBUG
 	CHECK_GL_ERROR();
 #endif
+}
 
-	// We can safely re-bind the framebuffer here, since this will be the
-	// 1st instruction of the new main loop
-	if( multiSampling_ )
-		glBindFramebufferOES(GL_FRAMEBUFFER_OES, [renderer_ msaaFrameBuffer]);
+- (void) setContentScaleFactor:(CGFloat)scaleFactor
+{
+	CGFloat oldScale = self.contentScaleFactor;
+	[super setContentScaleFactor:scaleFactor];
+	if (metalPresenter_ && scaleFactor != oldScale) {
+		// Cocos2D calls this from enableRetinaDisplay: after our initial
+		// setupSurface, which means our slot pool was built at the screen's
+		// native scale but cocos2d now wants us to render at a different
+		// scale. Rebuild the pool at the new scale.
+		[EAGLContext setCurrentContext:context_];
+		CGSize pixelSize = CGSizeMake(self.bounds.size.width * scaleFactor,
+									 self.bounds.size.height * scaleFactor);
+		if ([metalPresenter_ resizeTo:pixelSize scale:scaleFactor]) {
+			size_ = pixelSize;
+			[metalPresenter_ bindCurrentFramebuffer];
+			glViewport(0, 0, (GLsizei)pixelSize.width, (GLsizei)pixelSize.height);
+		}
+	}
 }
 
 - (unsigned int) convertPixelFormat:(NSString*) pixelFormat
