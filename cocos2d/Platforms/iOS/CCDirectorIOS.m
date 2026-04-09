@@ -141,10 +141,25 @@ CGFloat	__ccContentScaleFactor = 1;
 }
 
 //
+// Timing instrumentation exported to the RootViewController FPS overlay.
+// Defined unconditionally because Cocos2D does not see the game's SHOW_FPS
+// define, and a few mach_absolute_time samples per frame is free.
+#include <mach/mach_time.h>
+double gLastCocos2DDrawMs = 0.0;   // total drawScene duration
+double gLastCocos2DVisitMs = 0.0;  // just the [runningScene_ visit] cost
+double gLastCocos2DSwapMs = 0.0;   // [glView swapBuffers]
+double gLastCocos2DClearMs = 0.0;  // glClear
+double gLastCocos2DPreMs = 0.0;    // pre-visit (matrix/state setup)
+double gLastCocos2DPostMs = 0.0;   // post-visit (state teardown + popMatrix)
+
 // Draw the Scene
 //
 - (void) drawScene
 {
+	static mach_timebase_info_data_t _tb = {0};
+	if (_tb.denom == 0) mach_timebase_info(&_tb);
+	uint64_t _drawStart = mach_absolute_time();
+
 	/* calculate "global" dt */
 	[self calculateDeltaTime];
 
@@ -153,23 +168,35 @@ CGFloat	__ccContentScaleFactor = 1;
 		[[CCScheduler sharedScheduler] tick: dt];
 	}
 
+	uint64_t _clearStart = mach_absolute_time();
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	uint64_t _clearElapsed = mach_absolute_time() - _clearStart;
+	gLastCocos2DClearMs = ((double)_clearElapsed * (double)_tb.numer / (double)_tb.denom) / 1.0e6;
 
 	/* to avoid flickr, nextScene MUST be here: after tick and before draw.
 	 XXX: Which bug is this one. It seems that it can't be reproduced with v0.9 */
 	if( nextScene_ )
 		[self setNextScene];
 
+	uint64_t _preStart = mach_absolute_time();
 	glPushMatrix();
 
 	[self applyOrientation];
 
 	// By default enable VertexArray, ColorArray, TextureCoordArray and Texture2D
 	CC_ENABLE_DEFAULT_GL_STATES();
+	uint64_t _preElapsed = mach_absolute_time() - _preStart;
+	gLastCocos2DPreMs = ((double)_preElapsed * (double)_tb.numer / (double)_tb.denom) / 1.0e6;
+
+	uint64_t _visitStart = mach_absolute_time();
 
 	/* draw the scene */
 	[runningScene_ visit];
 
+	uint64_t _visitElapsed = mach_absolute_time() - _visitStart;
+	gLastCocos2DVisitMs = ((double)_visitElapsed * (double)_tb.numer / (double)_tb.denom) / 1.0e6;
+
+	uint64_t _postStart = mach_absolute_time();
 	/* draw the notification node */
 	[notificationNode_ visit];
 
@@ -183,10 +210,18 @@ CGFloat	__ccContentScaleFactor = 1;
 	CC_DISABLE_DEFAULT_GL_STATES();
 
 	glPopMatrix();
+	uint64_t _postElapsed = mach_absolute_time() - _postStart;
+	gLastCocos2DPostMs = ((double)_postElapsed * (double)_tb.numer / (double)_tb.denom) / 1.0e6;
 
 	totalFrames_++;
 
+	uint64_t _swapStart = mach_absolute_time();
 	[openGLView_ swapBuffers];
+	uint64_t _swapElapsed = mach_absolute_time() - _swapStart;
+	gLastCocos2DSwapMs = ((double)_swapElapsed * (double)_tb.numer / (double)_tb.denom) / 1.0e6;
+
+	uint64_t _drawElapsed = mach_absolute_time() - _drawStart;
+	gLastCocos2DDrawMs = ((double)_drawElapsed * (double)_tb.numer / (double)_tb.denom) / 1.0e6;
 }
 
 -(void) setProjection:(ccDirectorProjection)projection
@@ -725,14 +760,26 @@ CGFloat	__ccContentScaleFactor = 1;
 		CCLOG(@"cocos2d: DisplayLinkDirector: Error on gettimeofday");
 	}
 
-	// approximate frame rate
-	// assumes device refreshes at 60 fps
-	int frameInterval = (int) floor(animationInterval_ * 60.0f);
+	// Target FPS derived from the requested animation interval. iOS will
+	// clamp us to the display's actual maximum refresh rate (60 or 120).
+	NSInteger targetFPS = (NSInteger) round(1.0 / animationInterval_);
+	if (targetFPS < 1) targetFPS = 1;
 
-	CCLOG(@"cocos2d: Frame interval: %d", frameInterval);
+	CCLOG(@"cocos2d: Preferred frames per second: %ld", (long)targetFPS);
 
-	displayLink = [NSClassFromString(@"CADisplayLink") displayLinkWithTarget:self selector:@selector(mainLoop:)];
-	[(CADisplayLink*) displayLink setFrameInterval:frameInterval];
+	displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(mainLoop:)];
+
+	if (@available(iOS 15.0, *)) {
+		// Loose range so iOS can adapt (e.g. under thermal / Low Power),
+		// but bias toward the requested target.
+		float maxFPS = (float)targetFPS;
+		float minFPS = MIN(30.0f, maxFPS);
+		((CADisplayLink*)displayLink).preferredFrameRateRange =
+			CAFrameRateRangeMake(minFPS, maxFPS, maxFPS);
+	} else {
+		((CADisplayLink*)displayLink).preferredFramesPerSecond = targetFPS;
+	}
+
     if (runLoopCommon_)
             	[displayLink addToRunLoop:[NSRunLoop currentRunLoop] forMode:NSRunLoopCommonModes];
     else
