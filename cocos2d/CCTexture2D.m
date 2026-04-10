@@ -138,6 +138,43 @@ static id<MTLTexture> CCTexture2DMetalUploadData(const void *data,
             mtlFormat = MTLPixelFormatB5G6R5Unorm;
             bytesPerPixel = 2;
             break;
+        case kCCTexture2DPixelFormat_RGBA4444:
+        case kCCTexture2DPixelFormat_RGB5A1:
+        {
+            // Metal doesn't have a direct RGBA4444 or RGB5A1 format
+            // matching GL's byte order. Expand to RGBA8888 at load
+            // time (one-shot cost for font/UI textures).
+            NSUInteger count = width * height;
+            uint8_t *expanded = (uint8_t *)malloc(count * 4);
+            if (!expanded) return nil;
+            const uint16_t *src = (const uint16_t *)data;
+            for (NSUInteger i = 0; i < count; i++) {
+                uint16_t p = src[i];
+                if (pixelFormat == kCCTexture2DPixelFormat_RGBA4444) {
+                    expanded[i*4+0] = (uint8_t)(((p >> 12) & 0xF) * 17);
+                    expanded[i*4+1] = (uint8_t)(((p >>  8) & 0xF) * 17);
+                    expanded[i*4+2] = (uint8_t)(((p >>  4) & 0xF) * 17);
+                    expanded[i*4+3] = (uint8_t)(((p >>  0) & 0xF) * 17);
+                } else { // RGB5A1
+                    expanded[i*4+0] = (uint8_t)(((p >> 11) & 0x1F) * 255 / 31);
+                    expanded[i*4+1] = (uint8_t)(((p >>  6) & 0x1F) * 255 / 31);
+                    expanded[i*4+2] = (uint8_t)(((p >>  1) & 0x1F) * 255 / 31);
+                    expanded[i*4+3] = (uint8_t)((p & 0x1) * 255);
+                }
+            }
+            MTLTextureDescriptor *d8 =
+                [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                                                  width:width height:height mipmapped:NO];
+            d8.usage = MTLTextureUsageShaderRead;
+            d8.storageMode = MTLStorageModeShared;
+            id<MTLTexture> t8 = [device newTextureWithDescriptor:d8];
+            if (t8) {
+                [t8 replaceRegion:MTLRegionMake2D(0, 0, width, height)
+                       mipmapLevel:0 withBytes:expanded bytesPerRow:width * 4];
+            }
+            free(expanded);
+            return t8;
+        }
         case kCCTexture2DPixelFormat_A8:
             // Alpha-only. Cocos2d text routinely lands here.
             // A8Unorm samples as (0, 0, 0, a); for colored text we
@@ -253,10 +290,11 @@ static CCTexture2DPixelFormat defaultAlphaPixelFormat_ = kCCTexture2DPixelFormat
 
 		// Phase 2 of the Metal-renderer rewrite: also upload the
 		// pixel data into an MTLTexture for CCSprite.draw to sample
-		// when CCMetalRenderer is active. Only the RGBA8888 and
-		// RGB565 formats are handled right now — others leave
-		// metalTexture_ nil and the draw path falls back to GL.
+		// when CCMetalRenderer is active.
 		metalTexture_ = [CCTexture2DMetalUploadData(data, pixelFormat, width, height) retain];
+		if (!metalTexture_) {
+			NSLog(@"[CCTexture2D] initWithData: NO Metal texture for format %d (%lux%lu)", (int)pixelFormat, (unsigned long)width, (unsigned long)height);
+		}
 	}
 	return self;
 }
@@ -860,6 +898,9 @@ static BOOL PVRHaveAlphaPremultiplied_ = NO;
 			// Phase 2 Metal renderer: copy the PVR's Metal texture
 			// (created from the raw pixel data before it was freed).
 			metalTexture_ = [pvr.metalTexture retain];
+			if (!metalTexture_) {
+				NSLog(@"[CCTexture2D] initWithPVRFile: NO Metal texture for PVR format %d (%ux%u) path=%@", (int)pvr.format, pvr.width, pvr.height, relPath);
+			}
 
 			[pvr release];
 

@@ -675,15 +675,14 @@ static NSUInteger globalOrderOfArrival = 0;
 	// stack. transformGL_ is already laid out as a column-major 4x4
 	// float matrix (see CGAffineToGL), which is exactly what
 	// simd_float4x4 expects, so we can memcpy straight in.
-	{
-		CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
-		if (metalRenderer.active) {
-			simd_float4x4 m;
-			memcpy(&m, transformGL_, sizeof(float) * 16);
-			[metalRenderer multMatrix:m];
-			if (vertexZ_) {
-				[metalRenderer translateX:0.0f y:0.0f z:vertexZ_];
-			}
+	CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
+	BOOL metalMirror = metalRenderer.active;
+	if (metalMirror) {
+		simd_float4x4 m;
+		memcpy(&m, transformGL_, sizeof(float) * 16);
+		[metalRenderer multMatrix:m];
+		if (vertexZ_) {
+			[metalRenderer translateX:0.0f y:0.0f z:vertexZ_];
 		}
 	}
 	if( vertexZ_ )
@@ -701,6 +700,28 @@ static NSUInteger globalOrderOfArrival = 0;
 
 		if( translate )
 			ccglTranslate(RENDER_IN_SUBPIXEL(-anchorPointInPixels_.x), RENDER_IN_SUBPIXEL(-anchorPointInPixels_.y), 0);
+
+		// Mirror the camera transforms onto the Metal matrix stack.
+		// camera_.locate does gluLookAt which modifies GL's modelview
+		// directly. We replicate the translate + lookAt + translate
+		// sequence so Metal's MVP matches GL's.
+		if (metalMirror) {
+			if (translate) {
+				[metalRenderer translateX:RENDER_IN_SUBPIXEL(anchorPointInPixels_.x)
+									   y:RENDER_IN_SUBPIXEL(anchorPointInPixels_.y)
+									   z:0.0f];
+			}
+			float ex, ey, ez, cx, cy, cz, ux, uy, uz;
+			[camera_ eyeX:&ex eyeY:&ey eyeZ:&ez];
+			[camera_ centerX:&cx centerY:&cy centerZ:&cz];
+			[camera_ upX:&ux upY:&uy upZ:&uz];
+			[metalRenderer multMatrix:CCMetalMakeLookAt(ex, ey, ez, cx, cy, cz, ux, uy, uz)];
+			if (translate) {
+				[metalRenderer translateX:RENDER_IN_SUBPIXEL(-anchorPointInPixels_.x)
+									   y:RENDER_IN_SUBPIXEL(-anchorPointInPixels_.y)
+									   z:0.0f];
+			}
+		}
 	}
 
 

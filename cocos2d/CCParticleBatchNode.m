@@ -35,6 +35,7 @@
 #import "ccMacros.h"
 #import "CCGrid.h"
 #import "Support/CGPointExtension.h"
+#import "CCMetalRenderer.h"
 #import "CCParticleSystem.h"
 #import "CCParticleSystem.h"
 #import "CCParticleSystemPoint.h"
@@ -201,6 +202,9 @@
 		return;
 
 	glPushMatrix();
+	CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
+	BOOL metalActive = metalRenderer.active;
+	if (metalActive) [metalRenderer pushMatrix];
 
 	if ( grid_ && grid_.active) {
 		[grid_ beforeDraw];
@@ -221,6 +225,7 @@
 		[grid_ afterDraw:self];
 
 	glPopMatrix();
+	if (metalActive) [metalRenderer popMatrix];
 }
 
 // override addChild:

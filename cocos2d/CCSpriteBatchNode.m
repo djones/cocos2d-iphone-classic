@@ -33,6 +33,7 @@
 #import "CCGrid.h"
 #import "CCDrawingPrimitives.h"
 #import "CCTextureCache.h"
+#import "CCMetalRenderer.h"
 #import "Support/CGPointExtension.h"
 
 const NSUInteger defaultCapacity = 29;
@@ -159,6 +160,9 @@ static SEL selSortMethod =NULL;
 		return;
 
 	glPushMatrix();
+	CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
+	BOOL metalActive = metalRenderer.active;
+	if (metalActive) [metalRenderer pushMatrix];
 
 	if ( grid_ && grid_.active) {
 		[grid_ beforeDraw];
@@ -175,6 +179,7 @@ static SEL selSortMethod =NULL;
 		[grid_ afterDraw:self];
 
 	glPopMatrix();
+	if (metalActive) [metalRenderer popMatrix];
 }
 
 
