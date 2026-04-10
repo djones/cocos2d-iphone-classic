@@ -57,6 +57,7 @@ enum
 {
 	GLuint				fbo_;
 	GLint				oldFBO_;
+	GLint				oldViewport_[4];
 	CCTexture2D*		texture_;
 	CCSprite*			sprite_;
 

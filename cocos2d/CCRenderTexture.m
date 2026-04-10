@@ -124,6 +124,12 @@
 
 	// Adjust the orthographic propjection and viewport
 	ccglOrtho((float)-1.0 / widthRatio,  (float)1.0 / widthRatio, (float)-1.0 / heightRatio, (float)1.0 / heightRatio, -1,1);
+	// Save the current viewport so end can restore it. Querying glGet
+	// is more correct than recomputing from the director's
+	// displaySizeInPixels because the live viewport may differ from
+	// winSizeInPixels (e.g. when the Metal-presenter render path uses
+	// a smaller render-scale viewport than the logical projection size).
+	glGetIntegerv(GL_VIEWPORT, oldViewport_);
 	glViewport(0, 0, texSize.width, texSize.height);
 
 
@@ -162,8 +168,11 @@
 	ccglBindFramebuffer(CC_GL_FRAMEBUFFER, oldFBO_);
 	// Restore the original matrix and viewport
 	glPopMatrix();
-	CGSize size = [[CCDirector sharedDirector] displaySizeInPixels];
-	glViewport(0, 0, size.width, size.height);
+	// Restore the viewport that was active when -begin was called.
+	// (Was: glViewport(0, 0, displaySizeInPixels.width, .height) which
+	// always reset to winSizeInPixels and broke the Metal-presenter
+	// render-scale path.)
+	glViewport(oldViewport_[0], oldViewport_[1], oldViewport_[2], oldViewport_[3]);
 }
 
 -(void)clear:(float)r g:(float)g b:(float)b a:(float)a

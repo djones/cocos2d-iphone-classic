@@ -185,6 +185,22 @@ Copyright (C) 2008 Apple Inc. All Rights Reserved.
     return self;
 }
 
+// Compute the backing pixel size for the Metal surface. This game is
+// landscape-only; the window on iOS 16+ may have portrait bounds at
+// app launch before UIKit has rotated the view, so we force landscape
+// dimensions (width >= height) from the start to avoid an initial
+// portrait-sized pool that gets rebuilt moments later.
+static CGSize landscapePixelSizeForView(UIView *view, CGFloat scale)
+{
+	CGSize viewSize = view.bounds.size;
+	if (viewSize.width == 0 || viewSize.height == 0) {
+		viewSize = [[UIScreen mainScreen] bounds].size;
+	}
+	CGFloat w = MAX(viewSize.width, viewSize.height);
+	CGFloat h = MIN(viewSize.width, viewSize.height);
+	return CGSizeMake(w * scale, h * scale);
+}
+
 -(BOOL) setupSurfaceWithSharegroup:(EAGLSharegroup*)sharegroup
 {
 	// Layer is now a CAMetalLayer, not CAEAGLLayer — skip the old EAGL
@@ -197,11 +213,8 @@ Copyright (C) 2008 Apple Inc. All Rights Reserved.
 		return NO;
 	}
 
-	// Backing size in PIXELS. Our view frame is in points and the layer's
-	// contentsScale is the points→pixels factor (2x or 3x Retina).
 	CGFloat scale = [[UIScreen mainScreen] scale];
-	CGSize pixelSize = CGSizeMake(self.bounds.size.width * scale,
-								 self.bounds.size.height * scale);
+	CGSize pixelSize = landscapePixelSizeForView(self, scale);
 	size_ = pixelSize;
 
 	CAMetalLayer *metalLayer = (CAMetalLayer *)self.layer;
@@ -217,8 +230,12 @@ Copyright (C) 2008 Apple Inc. All Rights Reserved.
 	// Bind slot 0 so the very first drawScene renders into it.
 	[metalPresenter_ bindCurrentFramebuffer];
 
-	// Set the GL viewport to match the backing size.
-	glViewport(0, 0, (GLsizei)pixelSize.width, (GLsizei)pixelSize.height);
+	// Viewport is the slot pixel size (display pixels / render-scale
+	// divisor). The slot FBO is also at this size; cocos2d's projection
+	// stays at the full pixel size so the logical layout is unchanged.
+	glViewport(0, 0,
+			   (GLsizei)(pixelSize.width  / COCOS2D_RENDER_SCALE_DIVISOR),
+			   (GLsizei)(pixelSize.height / COCOS2D_RENDER_SCALE_DIVISOR));
 
 	discardFramebufferSupported_ = NO; // Metal path doesn't use discard hints.
 
@@ -243,34 +260,39 @@ Copyright (C) 2008 Apple Inc. All Rights Reserved.
 {
     [super layoutSubviews];
 
-    // Checking whether size has changed — UIKit also triggers layoutSubviews
-    // for unrelated reasons and we don't want to rebuild the pool each time.
-    CGFloat scale = [[UIScreen mainScreen] scale];
-    CGSize pixelSize = CGSizeMake(self.bounds.size.width * scale,
-                                  self.bounds.size.height * scale);
-
+    // Recompute the desired backing pixel size, always forced to landscape.
+    // UIKit can call layoutSubviews many times as the view hierarchy shuffles
+    // during startup.
+    CGFloat scale = self.contentScaleFactor ?: [[UIScreen mainScreen] scale];
+    CGSize pixelSize = landscapePixelSizeForView(self, scale);
     BOOL sizeChanged = (pixelSize.width != size_.width || pixelSize.height != size_.height);
-    if (!sizeChanged && !first_) return;
-
-    first_ = NO;
 
     [EAGLContext setCurrentContext:context_];
 
-    if (![metalPresenter_ resizeTo:pixelSize scale:scale]) {
-        CCLOG(@"cocos2d: EAGLView: MetalPresenter resize failed");
-        return;
+    if (sizeChanged) {
+        if (![metalPresenter_ resizeTo:pixelSize scale:scale]) {
+            CCLOG(@"cocos2d: EAGLView: MetalPresenter resize failed");
+            return;
+        }
+        size_ = pixelSize;
+        [metalPresenter_ bindCurrentFramebuffer];
+        glViewport(0, 0,
+                   (GLsizei)(pixelSize.width  / COCOS2D_RENDER_SCALE_DIVISOR),
+                   (GLsizei)(pixelSize.height / COCOS2D_RENDER_SCALE_DIVISOR));
     }
 
-    size_ = pixelSize;
-    [metalPresenter_ bindCurrentFramebuffer];
-    glViewport(0, 0, (GLsizei)pixelSize.width, (GLsizei)pixelSize.height);
-
-    // Issue #914 #924
+    // Issue #914 #924 — always reshape even if our force-landscape pixel
+    // size didn't change. Because we MAX/MIN the bounds, a portrait-to-
+    // landscape rotation produces the same pixelSize value but cocos2d
+    // needs to hear about the bounds change so its projection picks up
+    // the correct orientation from surfaceSize.
     CCDirector *director = [CCDirector sharedDirector];
     [director reshapeProjection:size_];
 
-    // Avoid flicker. Issue #350
-    [director performSelectorOnMainThread:@selector(drawScene) withObject:nil waitUntilDone:YES];
+    if (sizeChanged) {
+        // Avoid flicker. Issue #350
+        [director performSelectorOnMainThread:@selector(drawScene) withObject:nil waitUntilDone:YES];
+    }
 }
 
 - (void) swapBuffers
@@ -291,17 +313,17 @@ Copyright (C) 2008 Apple Inc. All Rights Reserved.
 	CGFloat oldScale = self.contentScaleFactor;
 	[super setContentScaleFactor:scaleFactor];
 	if (metalPresenter_ && scaleFactor != oldScale) {
-		// Cocos2D calls this from enableRetinaDisplay: after our initial
-		// setupSurface, which means our slot pool was built at the screen's
-		// native scale but cocos2d now wants us to render at a different
-		// scale. Rebuild the pool at the new scale.
+		// Cocos2D calls this from -enableRetinaDisplay: after our initial
+		// setupSurface. Rebuild the pool at the new scale, keeping the
+		// landscape-oriented sizing.
 		[EAGLContext setCurrentContext:context_];
-		CGSize pixelSize = CGSizeMake(self.bounds.size.width * scaleFactor,
-									 self.bounds.size.height * scaleFactor);
+		CGSize pixelSize = landscapePixelSizeForView(self, scaleFactor);
 		if ([metalPresenter_ resizeTo:pixelSize scale:scaleFactor]) {
 			size_ = pixelSize;
 			[metalPresenter_ bindCurrentFramebuffer];
-			glViewport(0, 0, (GLsizei)pixelSize.width, (GLsizei)pixelSize.height);
+			glViewport(0, 0,
+					   (GLsizei)(pixelSize.width  / COCOS2D_RENDER_SCALE_DIVISOR),
+					   (GLsizei)(pixelSize.height / COCOS2D_RENDER_SCALE_DIVISOR));
 		}
 	}
 }

@@ -626,6 +626,8 @@ static SEL selSortMethod = NULL;
 	diff = offsetof( ccV3F_C4B_T2F, texCoords);
 	glTexCoordPointer(2, GL_FLOAT, kQuadSize, (void*)(offset + diff));
 
+	extern int gCocos2DDrawCallsThisFrame;
+	gCocos2DDrawCallsThisFrame++;
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
 	if( newBlend )

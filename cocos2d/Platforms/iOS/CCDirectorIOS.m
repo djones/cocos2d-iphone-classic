@@ -48,6 +48,16 @@
 
 #import "CCLayer.h"
 
+// Parent-repo header. The motorbike Xcode target compiles these cocos2d
+// files alongside our own code, so this resolves through the standard
+// header search paths. We use COCOS2D_RENDER_SCALE_DIVISOR from here to
+// shrink the GL viewport (and therefore the rasterized pixel area)
+// while keeping cocos2d's logical projection at the full
+// winSizeInPixels_. The Metal presenter's slot textures are at the
+// matching shrunken size and Metal bilinearly upscales to the full
+// CAMetalLayer drawable on present.
+#import "MetalPresenter.h"
+
 #if CC_ENABLE_PROFILERS
 #import "../../Support/CCProfiling.h"
 #endif
@@ -152,6 +162,12 @@ double gLastCocos2DClearMs = 0.0;  // glClear
 double gLastCocos2DPreMs = 0.0;    // pre-visit (matrix/state setup)
 double gLastCocos2DPostMs = 0.0;   // post-visit (state teardown + popMatrix)
 
+// Per-frame draw call counter, incremented by CCSprite (unbatched) and
+// CCTextureAtlas (batched via CCSpriteBatchNode). Reset each frame in
+// drawScene.
+int gCocos2DDrawCallsThisFrame = 0;
+int gLastCocos2DDrawCalls = 0;
+
 // Draw the Scene
 //
 - (void) drawScene
@@ -167,6 +183,8 @@ double gLastCocos2DPostMs = 0.0;   // post-visit (state teardown + popMatrix)
 	if( ! isPaused_ ) {
 		[[CCScheduler sharedScheduler] tick: dt];
 	}
+
+	gCocos2DDrawCallsThisFrame = 0;
 
 	uint64_t _clearStart = mach_absolute_time();
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -222,15 +240,23 @@ double gLastCocos2DPostMs = 0.0;   // post-visit (state teardown + popMatrix)
 
 	uint64_t _drawElapsed = mach_absolute_time() - _drawStart;
 	gLastCocos2DDrawMs = ((double)_drawElapsed * (double)_tb.numer / (double)_tb.denom) / 1.0e6;
+
+	gLastCocos2DDrawCalls = gCocos2DDrawCallsThisFrame;
 }
 
 -(void) setProjection:(ccDirectorProjection)projection
 {
 	CGSize size = winSizeInPixels_;
+	// Viewport is the projection size scaled down by the render-scale
+	// divisor. The projection itself stays at the full winSizeInPixels_
+	// so cocos2d's coordinate system / sprite layout / point sizing is
+	// completely unchanged — only the rasterized pixel count shrinks.
+	GLsizei vw = (GLsizei)(size.width  / COCOS2D_RENDER_SCALE_DIVISOR);
+	GLsizei vh = (GLsizei)(size.height / COCOS2D_RENDER_SCALE_DIVISOR);
 
 	switch (projection) {
 		case kCCDirectorProjection2D:
-			glViewport(0, 0, size.width, size.height);
+			glViewport(0, 0, vw, vh);
 			glMatrixMode(GL_PROJECTION);
 			glLoadIdentity();
 			ccglOrtho(0, size.width, 0, size.height, -1024 * CC_CONTENT_SCALE_FACTOR(), 1024 * CC_CONTENT_SCALE_FACTOR());
@@ -242,7 +268,7 @@ double gLastCocos2DPostMs = 0.0;   // post-visit (state teardown + popMatrix)
 		{
 			float zeye = [self getZEye];
 
-			glViewport(0, 0, size.width, size.height);
+			glViewport(0, 0, vw, vh);
 			glMatrixMode(GL_PROJECTION);
 			glLoadIdentity();
 			// accommodate iPad retina while keep backward compatibility
@@ -283,8 +309,14 @@ double gLastCocos2DPostMs = 0.0;   // post-visit (state teardown + popMatrix)
 
 		[super setOpenGLView:view];
 
-		// set size
-		winSizeInPixels_ = CGSizeMake(winSizeInPoints_.width * __ccContentScaleFactor, winSizeInPoints_.height *__ccContentScaleFactor);
+		// Use the view's surface size (forced-landscape pixel size in
+		// our Metal path) rather than computing from bounds*scale. At
+		// app launch the view's bounds are often still portrait before
+		// UIKit rotates, which used to leave cocos2d with a portrait
+		// winSizeInPixels_ while the Metal backing was landscape.
+		winSizeInPixels_ = [openGLView_ surfaceSize];
+		winSizeInPoints_ = CGSizeMake(winSizeInPixels_.width / __ccContentScaleFactor,
+									  winSizeInPixels_.height / __ccContentScaleFactor);
 
 		if( __ccContentScaleFactor != 1 )
 			[self updateContentScaleFactor];
@@ -307,10 +339,19 @@ double gLastCocos2DPostMs = 0.0;   // post-visit (state teardown + popMatrix)
 	if( scaleFactor != __ccContentScaleFactor ) {
 
 		__ccContentScaleFactor = scaleFactor;
-		winSizeInPixels_ = CGSizeMake( winSizeInPoints_.width * scaleFactor, winSizeInPoints_.height * scaleFactor );
 
-		if( openGLView_ )
+		if( openGLView_ ) {
 			[self updateContentScaleFactor];
+			// Pick winSizeInPixels_ up from the view's surfaceSize,
+			// which our Metal-backed EAGLView keeps force-landscape
+			// and at the correct pixel resolution for the current
+			// scale factor.
+			winSizeInPixels_ = [openGLView_ surfaceSize];
+			winSizeInPoints_ = CGSizeMake(winSizeInPixels_.width / scaleFactor,
+										  winSizeInPixels_.height / scaleFactor);
+		} else {
+			winSizeInPixels_ = CGSizeMake( winSizeInPoints_.width * scaleFactor, winSizeInPoints_.height * scaleFactor );
+		}
 
 		// update projection
 		[self setProjection:projection_];
@@ -360,8 +401,13 @@ double gLastCocos2DPostMs = 0.0;   // post-visit (state teardown + popMatrix)
 // overriden, don't call super
 -(void) reshapeProjection:(CGSize)size
 {
-	winSizeInPoints_ = [openGLView_ bounds].size;
-	winSizeInPixels_ = CGSizeMake(winSizeInPoints_.width * __ccContentScaleFactor, winSizeInPoints_.height *__ccContentScaleFactor);
+	// Caller (EAGLView.layoutSubviews) passes the pixel size it wants
+	// us to use — with the Metal path that's our force-landscape
+	// surfaceSize. Ignore [openGLView_ bounds] because UIKit may still
+	// report a portrait frame at this point.
+	winSizeInPixels_ = size;
+	winSizeInPoints_ = CGSizeMake(size.width / __ccContentScaleFactor,
+								  size.height / __ccContentScaleFactor);
 
 	[self setProjection:projection_];
 }
