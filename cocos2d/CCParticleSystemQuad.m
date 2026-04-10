@@ -39,6 +39,7 @@
 #import "CCParticleBatchNode.h"
 #import "CCTextureAtlas.h"
 #import "CCAnimation.h"
+#import "CCMetalRenderer.h"
 
 // support
 #import "Support/OpenGL_Internal.h"
@@ -456,6 +457,28 @@
 	[super draw];
 
 	NSAssert(!useBatchNode_,@"draw should not be called when added to a particleBatchNode");
+
+	// Metal path: quads_ is an array of ccV3F_C4B_T2F_Quad which
+	// has the same memory layout as CCMetalVertex[4] per quad.
+	// We reuse drawTexturedQuadsVertexData which draws indexed
+	// triangles from the same vertex layout.
+	CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
+	if (metalRenderer.active && particleIdx > 0) {
+		id<MTLTexture> metalTex = texture_.metalTexture;
+		if (metalTex) {
+			CCMetalBlendMode blend = CCMetalBlendModePremultipliedAlpha;
+			if (blendFunc_.src == GL_SRC_ALPHA && blendFunc_.dst == GL_ONE_MINUS_SRC_ALPHA)
+				blend = CCMetalBlendModeAlpha;
+			else if (blendFunc_.src == GL_SRC_ALPHA && blendFunc_.dst == GL_ONE)
+				blend = CCMetalBlendModeAdditive;
+
+			[metalRenderer drawTexturedQuadsVertexData:quads_
+											  numQuads:(NSUInteger)particleIdx
+											   texture:metalTex
+											 blendMode:blend];
+			return;
+		}
+	}
 
 	// Default GL states: GL_TEXTURE_2D, GL_VERTEX_ARRAY, GL_COLOR_ARRAY, GL_TEXTURE_COORD_ARRAY
 	// Needed states: GL_TEXTURE_2D, GL_VERTEX_ARRAY, GL_COLOR_ARRAY, GL_TEXTURE_COORD_ARRAY
