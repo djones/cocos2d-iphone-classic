@@ -69,6 +69,9 @@ Copyright (C) 2008 Apple Inc. All Rights Reserved.
 #import "Support/ZipUtils.h"
 #import "Support/OpenGL_Internal.h"
 
+#import <Metal/Metal.h>
+#import "CCMetalRenderer.h"
+
 #pragma mark -
 #pragma mark CCTexturePVR
 
@@ -393,6 +396,13 @@ typedef struct _PVRTexHeader
 			return nil;
 		}
 
+		// Phase 2 Metal renderer: create an MTLTexture from the same
+		// raw pixel data before pvrdata is freed. Only uncompressed
+		// formats (RGBA8888, BGRA8888, RGB565, A8, AI88) are handled;
+		// PVRTC compressed is skipped (Metal deprecated PVRTC support
+		// on newer Apple silicon GPUs).
+		[self createMetalTexture];
+
 #ifdef __IPHONE_OS_VERSION_MAX_ALLOWED
 
 		GLenum pixelFormat = tableFormats[tableFormatIndex_][kCCInternalCCTexture2DPixelFormat];
@@ -480,6 +490,95 @@ typedef struct _PVRTexHeader
 }
 
 
+- (id<MTLTexture>)metalTexture
+{
+	return metalTexture_;
+}
+
+- (void)createMetalTexture
+{
+	if (numberOfMipmaps_ < 1) return;
+
+	id<MTLDevice> device = [CCMetalRenderer sharedRenderer].metalDevice;
+	if (!device) return;
+
+	BOOL compressed = tableFormats[tableFormatIndex_][kCCInternalCompressedImage];
+	if (compressed) {
+		// PVRTC compressed. Metal deprecated PVRTC on newer Apple
+		// silicon, so we skip it — these textures will render via
+		// GL (if the presenter is still alive) or be invisible.
+		// Phase 4 will add a software PVRTC decoder if needed.
+		return;
+	}
+
+	unsigned char *data = mipmaps_[0].address;
+	if (!data) return;
+
+	uint32_t pvrPixelType = tableFormats[tableFormatIndex_][kCCInternalPVRTextureFormat];
+
+	MTLPixelFormat mtlFormat;
+	NSUInteger bytesPerPixel;
+	MTLTextureSwizzleChannels swizzle = MTLTextureSwizzleChannelsMake(
+		MTLTextureSwizzleRed, MTLTextureSwizzleGreen,
+		MTLTextureSwizzleBlue, MTLTextureSwizzleAlpha);
+
+	switch (pvrPixelType) {
+		case kPVRTexturePixelTypeRGBA_8888:
+			mtlFormat = MTLPixelFormatRGBA8Unorm;
+			bytesPerPixel = 4;
+			break;
+		case kPVRTexturePixelTypeBGRA_8888:
+			mtlFormat = MTLPixelFormatBGRA8Unorm;
+			bytesPerPixel = 4;
+			break;
+		case kPVRTexturePixelTypeRGB_565:
+			mtlFormat = MTLPixelFormatB5G6R5Unorm;
+			bytesPerPixel = 2;
+			break;
+		case kPVRTexturePixelTypeRGBA_4444:
+			mtlFormat = MTLPixelFormatABGR4Unorm;
+			bytesPerPixel = 2;
+			break;
+		case kPVRTexturePixelTypeRGBA_5551:
+			mtlFormat = MTLPixelFormatA1BGR5Unorm;
+			bytesPerPixel = 2;
+			break;
+		case kPVRTexturePixelTypeA_8:
+			mtlFormat = MTLPixelFormatA8Unorm;
+			bytesPerPixel = 1;
+			swizzle = MTLTextureSwizzleChannelsMake(
+				MTLTextureSwizzleOne, MTLTextureSwizzleOne,
+				MTLTextureSwizzleOne, MTLTextureSwizzleAlpha);
+			break;
+		case kPVRTexturePixelTypeAI_88:
+			mtlFormat = MTLPixelFormatRG8Unorm;
+			bytesPerPixel = 2;
+			swizzle = MTLTextureSwizzleChannelsMake(
+				MTLTextureSwizzleRed, MTLTextureSwizzleRed,
+				MTLTextureSwizzleRed, MTLTextureSwizzleGreen);
+			break;
+		default:
+			return;
+	}
+
+	MTLTextureDescriptor *desc =
+		[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:mtlFormat
+														  width:width_
+														 height:height_
+													  mipmapped:NO];
+	desc.usage = MTLTextureUsageShaderRead;
+	desc.storageMode = MTLStorageModeShared;
+	desc.swizzle = swizzle;
+
+	metalTexture_ = [[device newTextureWithDescriptor:desc] retain];
+	if (!metalTexture_) return;
+
+	[metalTexture_ replaceRegion:MTLRegionMake2D(0, 0, width_, height_)
+					  mipmapLevel:0
+						withBytes:data
+					  bytesPerRow:bytesPerPixel * width_];
+}
+
 - (void)dealloc
 {
 	CCLOGINFO( @"cocos2d: deallocing %@", self);
@@ -487,6 +586,7 @@ typedef struct _PVRTexHeader
 	if (name_ != 0 && ! retainName_ )
 		glDeleteTextures(1, &name_);
 
+	[metalTexture_ release];
 	[super dealloc];
 }
 

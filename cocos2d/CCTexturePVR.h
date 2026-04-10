@@ -85,6 +85,8 @@ enum {
 	To use mipmaps with non-square textures, instead call CCTexture2D#generateMipmap on the sheet texture itself
 	(and to save space, save the PVR sprite sheet without mip maps included).
  */
+@protocol MTLTexture;
+
 @interface CCTexturePVR : NSObject
 {
 	struct CCPVRMipmap	mipmaps_[CC_PVRMIPMAP_MAX];	// pointer to mipmap images
@@ -98,6 +100,11 @@ enum {
 	// cocos2d integration
 	BOOL retainName_;
 	CCTexture2DPixelFormat format_;
+
+	// Phase 2 Metal renderer: parallel Metal texture loaded from
+	// the same PVR data (before the raw bytes are freed). Owned
+	// by the PVR object, copied to CCTexture2D in initWithPVRFile.
+	id<MTLTexture> metalTexture_;
 }
 
 /** initializes a CCTexturePVR with a path */
@@ -121,6 +128,10 @@ enum {
 // cocos2d integration
 @property (nonatomic,readwrite) BOOL retainName;
 @property (nonatomic,readonly) CCTexture2DPixelFormat format;
+
+/** Metal texture created from the same PVR pixel data.
+ *  nil if the format is unsupported (PVRTC on newer GPUs). */
+@property (nonatomic,readonly,nullable) id<MTLTexture> metalTexture;
 
 @end
 

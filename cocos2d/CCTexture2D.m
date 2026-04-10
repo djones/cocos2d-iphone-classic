@@ -857,6 +857,10 @@ static BOOL PVRHaveAlphaPremultiplied_ = NO;
 			hasPremultipliedAlpha_ = PVRHaveAlphaPremultiplied_;
 			format_ = pvr.format;
 
+			// Phase 2 Metal renderer: copy the PVR's Metal texture
+			// (created from the raw pixel data before it was freed).
+			metalTexture_ = [pvr.metalTexture retain];
+
 			[pvr release];
 
 		} else {
