@@ -37,6 +37,10 @@
 #import "Support/CGPointExtension.h"
 #import "CCDrawingPrimitives.h"
 
+// Phase 2 of the Metal-renderer rewrite: draw submission goes
+// through CCMetalRenderer when active.
+#import "CCMetalRenderer.h"
+
 #pragma mark -
 #pragma mark CCSprite
 
@@ -600,6 +604,39 @@ static SEL selSortMethod = NULL;
 	[super draw];
 
 	NSAssert(!usesBatchNode_, @"If CCSprite is being rendered by CCSpriteBatchNode, CCSprite#draw SHOULD NOT be called");
+
+	// Phase 2 of the Metal-renderer rewrite: when the Metal renderer
+	// is active and this texture has a Metal backing, emit a draw
+	// through CCMetalRenderer instead of the GL path below. The
+	// sprite's quad_ has the same in-memory layout as CCMetalVertex
+	// (ccV3F_C4B_T2F), so we can pass the 4 vertices straight
+	// through. Textures without a Metal backing (PVR, RGBA4444, etc.)
+	// fall back to the GL path so they remain visible, though that
+	// means those draws go to MetalPresenter's slot FBO which nobody
+	// presents while CCMetalRenderer.active is YES — they're
+	// effectively invisible. Phase 4 will close that gap.
+	CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
+	if (metalRenderer.active) {
+		id<MTLTexture> metalTex = texture_.metalTexture;
+		if (metalTex) {
+			CCMetalBlendMode blend = CCMetalBlendModePremultipliedAlpha;
+			if (blendFunc_.src == GL_SRC_ALPHA && blendFunc_.dst == GL_ONE_MINUS_SRC_ALPHA) {
+				blend = CCMetalBlendModeAlpha;
+			} else if (blendFunc_.src == GL_SRC_ALPHA && blendFunc_.dst == GL_ONE) {
+				blend = CCMetalBlendModeAdditive;
+			} else if (blendFunc_.src == GL_ONE && blendFunc_.dst == GL_ZERO) {
+				blend = CCMetalBlendModeOpaque;
+			}
+			// ccV3F_C4B_T2F has the same layout as CCMetalVertex so
+			// we can pass the 4 quad vertices through as a cast.
+			[metalRenderer drawTexturedQuadVertices:(const CCMetalVertex *)&quad_
+											  texture:metalTex
+											blendMode:blend];
+			extern int gCocos2DDrawCallsThisFrame;
+			gCocos2DDrawCallsThisFrame++;
+			return;
+		}
+	}
 
 	// Default GL states: GL_TEXTURE_2D, GL_VERTEX_ARRAY, GL_COLOR_ARRAY, GL_TEXTURE_COORD_ARRAY
 	// Needed states: GL_TEXTURE_2D, GL_VERTEX_ARRAY, GL_COLOR_ARRAY, GL_TEXTURE_COORD_ARRAY

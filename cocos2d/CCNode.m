@@ -38,6 +38,12 @@
 #import "Support/TransformUtils.h"
 #import "ccMacros.h"
 
+// Phase 2 of the Metal-renderer rewrite: pushMatrix/popMatrix and the
+// cached-transform multiply need to land on CCMetalRenderer's CPU
+// matrix stack alongside the GL calls so CCSprite.draw can read the
+// current MVP at render time.
+#import "CCMetalRenderer.h"
+
 #import <Availability.h>
 #ifdef __IPHONE_OS_VERSION_MAX_ALLOWED
 #import "Platforms/iOS/CCDirectorIOS.h"
@@ -595,6 +601,9 @@ static NSUInteger globalOrderOfArrival = 0;
 		return;
 
 	glPushMatrix();
+	CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
+	BOOL metalActive = metalRenderer.active;
+	if (metalActive) [metalRenderer pushMatrix];
 
 	if ( grid_ && grid_.active) {
 		[grid_ beforeDraw];
@@ -635,6 +644,7 @@ static NSUInteger globalOrderOfArrival = 0;
 		[grid_ afterDraw:self];
 
 	glPopMatrix();
+	if (metalActive) [metalRenderer popMatrix];
 }
 
 #pragma mark CCNode - Transformations
@@ -661,6 +671,21 @@ static NSUInteger globalOrderOfArrival = 0;
 	}
 
 	glMultMatrixf(transformGL_);
+	// Mirror the cached affine onto the Metal renderer's modelview
+	// stack. transformGL_ is already laid out as a column-major 4x4
+	// float matrix (see CGAffineToGL), which is exactly what
+	// simd_float4x4 expects, so we can memcpy straight in.
+	{
+		CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
+		if (metalRenderer.active) {
+			simd_float4x4 m;
+			memcpy(&m, transformGL_, sizeof(float) * 16);
+			[metalRenderer multMatrix:m];
+			if (vertexZ_) {
+				[metalRenderer translateX:0.0f y:0.0f z:vertexZ_];
+			}
+		}
+	}
 	if( vertexZ_ )
 		glTranslatef(0, 0, vertexZ_);
 

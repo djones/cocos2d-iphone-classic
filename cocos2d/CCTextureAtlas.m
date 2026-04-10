@@ -33,6 +33,10 @@
 #import "CGPointExtension.h"
 #import "CCDrawingPrimitives.h"
 
+// Phase 2 of the Metal-renderer rewrite: batched draws route through
+// CCMetalRenderer when active.
+#import "CCMetalRenderer.h"
+
 
 @interface CCTextureAtlas (Private)
 -(void) initIndices;
@@ -432,6 +436,27 @@
 
 -(void) drawNumberOfQuads: (NSUInteger) n fromIndex: (NSUInteger) start
 {
+	// Phase 2 of the Metal-renderer rewrite: if the renderer is
+	// active and our texture has a Metal backing, emit this batch
+	// as a single indexed Metal draw. The vertex block at
+	// &quads_[start] has the exact ccV3F_C4B_T2F layout CCMetalRenderer
+	// expects. Cocos2d's own blend state is whatever the caller
+	// (CCSpriteBatchNode) left on GL; since CCSpriteBatchNode uses
+	// the default premultiplied-alpha blend, we pass that through.
+	CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
+	if (metalRenderer.active) {
+		id<MTLTexture> metalTex = texture_.metalTexture;
+		if (metalTex && n > 0) {
+			[metalRenderer drawTexturedQuadsVertexData:&quads_[start]
+											  numQuads:n
+											   texture:metalTex
+											 blendMode:CCMetalBlendModePremultipliedAlpha];
+			extern int gCocos2DDrawCallsThisFrame;
+			gCocos2DDrawCallsThisFrame++;
+			return;
+		}
+	}
+
 	// Default GL states: GL_TEXTURE_2D, GL_VERTEX_ARRAY, GL_COLOR_ARRAY, GL_TEXTURE_COORD_ARRAY
 	// Needed states: GL_TEXTURE_2D, GL_VERTEX_ARRAY, GL_COLOR_ARRAY, GL_TEXTURE_COORD_ARRAY
 	// Unneeded states: -

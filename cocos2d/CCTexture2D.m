@@ -101,6 +101,89 @@
 
 //CLASS IMPLEMENTATIONS:
 
+// Phase 2 of the Metal-renderer rewrite: pixel-data → MTLTexture helper
+// used by initWithData:. Only the formats Metal can represent 1:1 are
+// handled right now; unsupported formats return nil and CCSprite /
+// CCTextureAtlas fall back to the GL path for that texture.
+#import <Metal/Metal.h>
+#import "CCMetalRenderer.h"
+
+static id<MTLTexture> CCTexture2DMetalUploadData(const void *data,
+                                                   CCTexture2DPixelFormat pixelFormat,
+                                                   NSUInteger width,
+                                                   NSUInteger height)
+{
+    if (!data || width == 0 || height == 0) return nil;
+
+    id<MTLDevice> device = [CCMetalRenderer sharedRenderer].metalDevice;
+    if (!device) return nil;
+
+    MTLPixelFormat mtlFormat;
+    NSUInteger bytesPerPixel;
+    // Texture swizzle, so a single pipeline's "float4 return color *
+    // sample" shader formula works for every cocos2d pixel format
+    // without per-format shader branching. Defaults to identity
+    // (rgba → rgba) and is customized below for alpha-only /
+    // luminance-alpha text textures.
+    MTLTextureSwizzleChannels swizzle = MTLTextureSwizzleChannelsMake(
+        MTLTextureSwizzleRed, MTLTextureSwizzleGreen,
+        MTLTextureSwizzleBlue, MTLTextureSwizzleAlpha);
+
+    switch (pixelFormat) {
+        case kCCTexture2DPixelFormat_RGBA8888:
+            mtlFormat = MTLPixelFormatRGBA8Unorm;
+            bytesPerPixel = 4;
+            break;
+        case kCCTexture2DPixelFormat_RGB565:
+            mtlFormat = MTLPixelFormatB5G6R5Unorm;
+            bytesPerPixel = 2;
+            break;
+        case kCCTexture2DPixelFormat_A8:
+            // Alpha-only. Cocos2d text routinely lands here.
+            // A8Unorm samples as (0, 0, 0, a); for colored text we
+            // want (1, 1, 1, a) so `vertexColor * sample` yields
+            // (color.rgb, color.a * a).
+            mtlFormat = MTLPixelFormatA8Unorm;
+            bytesPerPixel = 1;
+            swizzle = MTLTextureSwizzleChannelsMake(
+                MTLTextureSwizzleOne, MTLTextureSwizzleOne,
+                MTLTextureSwizzleOne, MTLTextureSwizzleAlpha);
+            break;
+        case kCCTexture2DPixelFormat_AI88:
+            // Luminance/alpha packed as two bytes: byte 0 = I
+            // (luminance), byte 1 = A. RG8Unorm stores those in R/G;
+            // swizzle to (R, R, R, G) so sampling yields (I, I, I, A).
+            mtlFormat = MTLPixelFormatRG8Unorm;
+            bytesPerPixel = 2;
+            swizzle = MTLTextureSwizzleChannelsMake(
+                MTLTextureSwizzleRed, MTLTextureSwizzleRed,
+                MTLTextureSwizzleRed, MTLTextureSwizzleGreen);
+            break;
+        default:
+            // RGBA4444, RGB5A1, PVR. Leave metalTexture_ nil and the
+            // draw path falls back to GL. Phase 4 will handle these.
+            return nil;
+    }
+
+    MTLTextureDescriptor *desc =
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:mtlFormat
+                                                            width:width
+                                                           height:height
+                                                        mipmapped:NO];
+    desc.usage = MTLTextureUsageShaderRead;
+    desc.storageMode = MTLStorageModeShared;
+    desc.swizzle = swizzle;
+
+    id<MTLTexture> tex = [device newTextureWithDescriptor:desc];
+    if (!tex) return nil;
+
+    [tex replaceRegion:MTLRegionMake2D(0, 0, width, height)
+            mipmapLevel:0
+              withBytes:data
+            bytesPerRow:bytesPerPixel * width];
+    return tex;
+}
+
 
 // If the image has alpha, you can create RGBA8 (32-bit) or RGBA4 (16-bit) or RGB5A1 (16-bit)
 // Default is: RGBA8888 (32-bit textures)
@@ -167,6 +250,13 @@ static CCTexture2DPixelFormat defaultAlphaPixelFormat_ = kCCTexture2DPixelFormat
 #ifdef __IPHONE_OS_VERSION_MAX_ALLOWED
 		resolutionType_ = kCCResolutionUnknown;
 #endif
+
+		// Phase 2 of the Metal-renderer rewrite: also upload the
+		// pixel data into an MTLTexture for CCSprite.draw to sample
+		// when CCMetalRenderer is active. Only the RGBA8888 and
+		// RGB565 formats are handled right now — others leave
+		// metalTexture_ nil and the draw path falls back to GL.
+		metalTexture_ = [CCTexture2DMetalUploadData(data, pixelFormat, width, height) retain];
 	}
 	return self;
 }
@@ -189,7 +279,13 @@ static CCTexture2DPixelFormat defaultAlphaPixelFormat_ = kCCTexture2DPixelFormat
 	if(name_)
 		glDeleteTextures(1, &name_);
 
+	[metalTexture_ release];
 	[super dealloc];
+}
+
+- (id<MTLTexture>) metalTexture
+{
+	return metalTexture_;
 }
 
 - (NSString*) description

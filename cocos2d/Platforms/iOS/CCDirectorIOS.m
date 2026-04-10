@@ -57,6 +57,7 @@
 // matching shrunken size and Metal bilinearly upscales to the full
 // CAMetalLayer drawable on present.
 #import "MetalPresenter.h"
+#import "CCMetalRenderer.h"
 
 #if CC_ENABLE_PROFILERS
 #import "../../Support/CCProfiling.h"
@@ -186,6 +187,27 @@ int gLastCocos2DDrawCalls = 0;
 
 	gCocos2DDrawCallsThisFrame = 0;
 
+	// Metal renderer bracket: if CCMetalRenderer.active is YES, it
+	// acquires a drawable and opens a render pass before visit, and
+	// presents after. In that case the GL glClear below is harmless
+	// but unread (MetalPresenter.presentAndAdvance short-circuits
+	// below when active is YES). If beginFrame fails (no drawable
+	// available this tick) we still run the visit so game logic
+	// advances, but skip the endFrame/present.
+	CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
+	BOOL metalActive = metalRenderer.active;
+	BOOL metalFrameStarted = NO;
+	if (metalActive) {
+		// Build an orthographic projection matching cocos2d's
+		// setProjection ortho: (0, w, 0, h, -1024s, 1024s) where
+		// s = __ccContentScaleFactor.
+		const float w = (float)winSizeInPixels_.width;
+		const float h = (float)winSizeInPixels_.height;
+		const float z = 1024.0f * (float)__ccContentScaleFactor;
+		simd_float4x4 proj = CCMetalMakeOrtho(0.0f, w, 0.0f, h, -z, z);
+		metalFrameStarted = [metalRenderer beginFrameWithProjection:proj];
+	}
+
 	uint64_t _clearStart = mach_absolute_time();
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	uint64_t _clearElapsed = mach_absolute_time() - _clearStart;
@@ -232,6 +254,15 @@ int gLastCocos2DDrawCalls = 0;
 	gLastCocos2DPostMs = ((double)_postElapsed * (double)_tb.numer / (double)_tb.denom) / 1.0e6;
 
 	totalFrames_++;
+
+	// End the Metal frame before we call -swapBuffers so the presenter
+	// can see that a Metal present has already happened this tick and
+	// skip its own. If metalFrameStarted is NO we just skip, which
+	// means we're running without visible output that frame (the GL
+	// draws were harmless).
+	if (metalFrameStarted) {
+		[metalRenderer endFrameAndPresent];
+	}
 
 	uint64_t _swapStart = mach_absolute_time();
 	[openGLView_ swapBuffers];

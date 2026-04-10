@@ -73,6 +73,8 @@ Copyright (C) 2008 Apple Inc. All Rights Reserved.
 #import "Platforms/CCGL.h" // OpenGL stuff
 #import "Platforms/CCNS.h" // Next-Step stuff
 
+@protocol MTLTexture;
+
 //CONSTANTS:
 
 /** @typedef CCTexture2DPixelFormat
@@ -136,6 +138,13 @@ typedef enum
 	ccResolutionType			resolutionType_;
 #endif
 
+	// Phase 2 of the Metal-renderer rewrite: an MTLTexture loaded
+	// from the same pixel data as the GL texture above. Created
+	// opportunistically in initWithData: for the pixel formats Metal
+	// can represent 1:1 (currently RGBA8888 and RGB565); unsupported
+	// formats leave this nil and CCSprite.draw falls back to its GL
+	// path for that texture. Retained because cocos2d 1.x is MRC.
+	id<MTLTexture>				metalTexture_;
 }
 /** Intializes with a texture2d with data */
 - (id) initWithData:(const void*)data pixelFormat:(CCTexture2DPixelFormat)pixelFormat pixelsWide:(NSUInteger)width pixelsHigh:(NSUInteger)height contentSize:(CGSize)size;
@@ -153,6 +162,13 @@ typedef enum
 
 /** texture name */
 @property(nonatomic,readonly) GLuint name;
+
+/** Parallel Metal texture loaded from the same pixel data, used by
+ *  CCSprite.draw / CCTextureAtlas.drawNumberOfQuads when
+ *  CCMetalRenderer.active is YES. nil for pixel formats the Metal
+ *  renderer hasn't been taught yet, in which case callers should
+ *  fall back to the GL draw path. */
+@property(nonatomic,readonly,nullable) id<MTLTexture> metalTexture;
 
 /** returns content size of the texture in pixels */
 @property(nonatomic,readonly, nonatomic) CGSize contentSizeInPixels;
