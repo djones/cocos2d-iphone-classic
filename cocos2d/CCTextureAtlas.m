@@ -436,82 +436,16 @@
 
 -(void) drawNumberOfQuads: (NSUInteger) n fromIndex: (NSUInteger) start
 {
-	// Phase 2 of the Metal-renderer rewrite: if the renderer is
-	// active and our texture has a Metal backing, emit this batch
-	// as a single indexed Metal draw. The vertex block at
-	// &quads_[start] has the exact ccV3F_C4B_T2F layout CCMetalRenderer
-	// expects. Cocos2d's own blend state is whatever the caller
-	// (CCSpriteBatchNode) left on GL; since CCSpriteBatchNode uses
-	// the default premultiplied-alpha blend, we pass that through.
-	CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
-	if (metalRenderer.active) {
-		id<MTLTexture> metalTex = texture_.metalTexture;
-		if (metalTex && n > 0) {
-			[metalRenderer drawTexturedQuadsVertexData:&quads_[start]
-											  numQuads:n
-											   texture:metalTex
-											 blendMode:CCMetalBlendModePremultipliedAlpha];
-			extern int gCocos2DDrawCallsThisFrame;
-			gCocos2DDrawCallsThisFrame++;
-			return;
-		}
+	// Metal renderer: emit as a single indexed draw.
+	id<MTLTexture> metalTex = texture_.metalTexture;
+	if (metalTex && n > 0) {
+		CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
+		[metalRenderer drawTexturedQuadsVertexData:&quads_[start]
+										  numQuads:n
+										   texture:metalTex
+										 blendMode:CCMetalBlendModePremultipliedAlpha];
+		extern int gCocos2DDrawCallsThisFrame;
+		gCocos2DDrawCallsThisFrame++;
 	}
-
-	// Default GL states: GL_TEXTURE_2D, GL_VERTEX_ARRAY, GL_COLOR_ARRAY, GL_TEXTURE_COORD_ARRAY
-	// Needed states: GL_TEXTURE_2D, GL_VERTEX_ARRAY, GL_COLOR_ARRAY, GL_TEXTURE_COORD_ARRAY
-	// Unneeded states: -
-
-	glBindTexture(GL_TEXTURE_2D, [texture_ name]);
-#define kQuadSize sizeof(quads_[0].bl)
-#if CC_USES_VBO
-	glBindBuffer(GL_ARRAY_BUFFER, buffersVBO_[0]);
-
-	// XXX: update is done in draw... perhaps it should be done in a timer
-	if (dirty_) {
-		glBufferSubData(GL_ARRAY_BUFFER, sizeof(quads_[0])*start, sizeof(quads_[0]) * n , &quads_[start] );
-		dirty_ = NO;
-	}
-
-	// vertices
-	glVertexPointer(3, GL_FLOAT, kQuadSize, (GLvoid*) offsetof( ccV3F_C4B_T2F, vertices));
-
-	// colors
-	glColorPointer(4, GL_UNSIGNED_BYTE, kQuadSize, (GLvoid*) offsetof( ccV3F_C4B_T2F, colors));
-
-	// tex coords
-	glTexCoordPointer(2, GL_FLOAT, kQuadSize, (GLvoid*) offsetof( ccV3F_C4B_T2F, texCoords));
-
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffersVBO_[1]);
-	extern int gCocos2DDrawCallsThisFrame;
-	gCocos2DDrawCallsThisFrame++;
-#if CC_TEXTURE_ATLAS_USE_TRIANGLE_STRIP
-	glDrawElements(GL_TRIANGLE_STRIP, (GLsizei) n*6, GL_UNSIGNED_SHORT, (GLvoid*) (start*6*sizeof(indices_[0])) );
-#else
-	glDrawElements(GL_TRIANGLES, (GLsizei) n*6, GL_UNSIGNED_SHORT, (GLvoid*) (start*6*sizeof(indices_[0])) );
-#endif // CC_TEXTURE_ATLAS_USE_TRIANGLE_STRIP
-
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-#else // ! CC_USES_VBO
-
-	NSUInteger offset = (NSUInteger)quads_;
-	// vertex
-	NSUInteger diff = offsetof( ccV3F_C4B_T2F, vertices);
-	glVertexPointer(3, GL_FLOAT, kQuadSize, (GLvoid*) (offset + diff) );
-	// color
-	diff = offsetof( ccV3F_C4B_T2F, colors);
-	glColorPointer(4, GL_UNSIGNED_BYTE, kQuadSize, (GLvoid*)(offset + diff));
-
-	// tex coords
-	diff = offsetof( ccV3F_C4B_T2F, texCoords);
-	glTexCoordPointer(2, GL_FLOAT, kQuadSize, (GLvoid*)(offset + diff));
-
-#if CC_TEXTURE_ATLAS_USE_TRIANGLE_STRIP
-	glDrawElements(GL_TRIANGLE_STRIP, n*6, GL_UNSIGNED_SHORT, indices_ + start * 6 );
-#else
-	glDrawElements(GL_TRIANGLES, n*6, GL_UNSIGNED_SHORT, indices_ + start * 6 );
-#endif
-
-#endif // CC_USES_VBO
 }
 @end

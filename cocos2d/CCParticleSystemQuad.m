@@ -458,76 +458,23 @@
 
 	NSAssert(!useBatchNode_,@"draw should not be called when added to a particleBatchNode");
 
-	// Metal path: quads_ is an array of ccV3F_C4B_T2F_Quad which
-	// has the same memory layout as CCMetalVertex[4] per quad.
-	// We reuse drawTexturedQuadsVertexData which draws indexed
-	// triangles from the same vertex layout.
-	CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
-	if (metalRenderer.active && particleIdx > 0) {
+	// Metal renderer: submit particle quads as indexed triangles.
+	// quads_ has the same ccV3F_C4B_T2F layout as CCMetalVertex.
+	if (particleIdx > 0) {
 		id<MTLTexture> metalTex = texture_.metalTexture;
 		if (metalTex) {
+			CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
 			CCMetalBlendMode blend = CCMetalBlendModePremultipliedAlpha;
 			if (blendFunc_.src == GL_SRC_ALPHA && blendFunc_.dst == GL_ONE_MINUS_SRC_ALPHA)
 				blend = CCMetalBlendModeAlpha;
 			else if (blendFunc_.src == GL_SRC_ALPHA && blendFunc_.dst == GL_ONE)
 				blend = CCMetalBlendModeAdditive;
-
 			[metalRenderer drawTexturedQuadsVertexData:quads_
 											  numQuads:(NSUInteger)particleIdx
 											   texture:metalTex
 											 blendMode:blend];
-			return;
 		}
 	}
-
-	// Default GL states: GL_TEXTURE_2D, GL_VERTEX_ARRAY, GL_COLOR_ARRAY, GL_TEXTURE_COORD_ARRAY
-	// Needed states: GL_TEXTURE_2D, GL_VERTEX_ARRAY, GL_COLOR_ARRAY, GL_TEXTURE_COORD_ARRAY
-	// Unneeded states: -
-
-	glBindTexture(GL_TEXTURE_2D, [texture_ name]);
-
-#define kQuadSize sizeof(quads_[0].bl)
-
-#if CC_USES_VBO
-	glBindBuffer(GL_ARRAY_BUFFER, quadsID_);
-
-	glVertexPointer(3,GL_FLOAT, kQuadSize, 0);
-
-	glColorPointer(4, GL_UNSIGNED_BYTE, kQuadSize, (GLvoid*) offsetof(ccV3F_C4B_T2F,colors) );
-
-	glTexCoordPointer(2, GL_FLOAT, kQuadSize, (GLvoid*) offsetof(ccV3F_C4B_T2F,texCoords) );
-#else // vertex array list
-
-	NSUInteger offset = (NSUInteger) quads_;
-
-	// vertex
-	NSUInteger diff = offsetof( ccV3F_C4B_T2F, vertices);
-	glVertexPointer(2,GL_FLOAT, kQuadSize, (GLvoid*) (offset+diff) );
-
-	// color
-	diff = offsetof( ccV3F_C4B_T2F, colors);
-	glColorPointer(4, GL_UNSIGNED_BYTE, kQuadSize, (GLvoid*)(offset + diff));
-
-	// tex coords
-	diff = offsetof( ccV3F_C4B_T2F, texCoords);
-	glTexCoordPointer(2, GL_FLOAT, kQuadSize, (GLvoid*)(offset + diff));
-
-#endif // ! CC_USES_VBO
-
-	BOOL newBlend = blendFunc_.src != CC_BLEND_SRC || blendFunc_.dst != CC_BLEND_DST;
-	if( newBlend )
-		glBlendFunc( blendFunc_.src, blendFunc_.dst );
-
-	NSAssert( particleIdx == particleCount, @"Abnormal error in particle quad");
-	glDrawElements(GL_TRIANGLES, (GLsizei) particleIdx*6, GL_UNSIGNED_SHORT, indices_);
-
-	// restore blend state
-	if( newBlend )
-		glBlendFunc( CC_BLEND_SRC, CC_BLEND_DST );
-
-#if CC_USES_VBO
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-#endif
 
 	// restore GL default state
 	// -

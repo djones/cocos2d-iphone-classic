@@ -365,71 +365,30 @@
 {
 	[super draw];
 
-	// Phase 4 Metal renderer: draw the colored quad via Metal when
-	// active. squareVertices_ is 4 vec2 (8 floats), squareColors_
-	// is 4 × RGBA bytes. Build CCMetalVertex and submit with the
-	// white-pixel texture (untextured draw: in.color * white = color).
+	// Metal renderer: draw the colored quad in screen space. The
+	// squareVertices_ are already in pixel coords (setContentSize
+	// multiplies by CC_CONTENT_SCALE_FACTOR), so we use a
+	// projection-only MVP (no modelview).
 	CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
-	if (metalRenderer.active) {
-		// Use the projection-only MVP (no modelview) to draw the
-		// overlay in screen space, just like the diagnostic overlay
-		// in endFrameAndPresent that IS visually working. The scene
-		// graph's modelview isn't needed because the squareVertices_
-		// are already in pixel coordinates (setContentSize multiplies
-		// by CC_CONTENT_SCALE_FACTOR).
-		id<MTLTexture> whiteTex = metalRenderer.whitePixelTexture;
-		if (whiteTex) {
-			CCMetalVertex verts[4];
-			for (int i = 0; i < 4; i++) {
-				verts[i].position[0] = squareVertices_[i].x;
-				verts[i].position[1] = squareVertices_[i].y;
-				verts[i].position[2] = 0.0f;
-				verts[i].color[0] = squareColors_[i].r;
-				verts[i].color[1] = squareColors_[i].g;
-				verts[i].color[2] = squareColors_[i].b;
-				verts[i].color[3] = squareColors_[i].a;
-				verts[i].texCoords[0] = 0.0f;
-				verts[i].texCoords[1] = 0.0f;
-			}
-			CCMetalBlendMode blend = CCMetalBlendModeAlpha;
-			// Draw directly with projection-only MVP, bypassing
-			// drawTriangleStripVertices to eliminate modelview stack
-			// as a variable.
-			[metalRenderer drawScreenSpaceTriangleStrip:verts
-												 count:4
-											   texture:whiteTex
-											 blendMode:blend];
-			return;
+	id<MTLTexture> whiteTex = metalRenderer.whitePixelTexture;
+	if (whiteTex) {
+		CCMetalVertex verts[4];
+		for (int i = 0; i < 4; i++) {
+			verts[i].position[0] = squareVertices_[i].x;
+			verts[i].position[1] = squareVertices_[i].y;
+			verts[i].position[2] = 0.0f;
+			verts[i].color[0] = squareColors_[i].r;
+			verts[i].color[1] = squareColors_[i].g;
+			verts[i].color[2] = squareColors_[i].b;
+			verts[i].color[3] = squareColors_[i].a;
+			verts[i].texCoords[0] = 0.0f;
+			verts[i].texCoords[1] = 0.0f;
 		}
+		[metalRenderer drawScreenSpaceTriangleStrip:verts
+											 count:4
+										   texture:whiteTex
+										 blendMode:CCMetalBlendModeAlpha];
 	}
-
-	// Default GL states: GL_TEXTURE_2D, GL_VERTEX_ARRAY, GL_COLOR_ARRAY, GL_TEXTURE_COORD_ARRAY
-	// Needed states: GL_VERTEX_ARRAY, GL_COLOR_ARRAY
-	// Unneeded states: GL_TEXTURE_2D, GL_TEXTURE_COORD_ARRAY
-	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-	glDisable(GL_TEXTURE_2D);
-
-	glVertexPointer(2, GL_FLOAT, 0, squareVertices_);
-	glColorPointer(4, GL_UNSIGNED_BYTE, 0, squareColors_);
-
-
-	BOOL newBlend = blendFunc_.src != CC_BLEND_SRC || blendFunc_.dst != CC_BLEND_DST;
-	if( newBlend )
-		glBlendFunc( blendFunc_.src, blendFunc_.dst );
-
-	else if( opacity_ != 255 ) {
-		newBlend = YES;
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	}
-
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-	if( newBlend )
-		glBlendFunc(CC_BLEND_SRC, CC_BLEND_DST);
-
-	// restore default GL state
-	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-	glEnable(GL_TEXTURE_2D);
 }
 
 #pragma mark Protocols

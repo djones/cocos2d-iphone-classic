@@ -489,69 +489,33 @@ const char kProgressTextureCoords = 0x1e;
 	if(!vertexData_)return;
 	if(!sprite_)return;
 
-	// Metal path: convert ccV2F_C4B_T2F (2D pos) to CCMetalVertex
-	// (3D pos) and submit as a triangle strip or fan.
-	CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
-	if (metalRenderer.active) {
-		id<MTLTexture> metalTex = sprite_.texture.metalTexture;
-		if (metalTex && vertexDataCount_ > 0) {
-			CCMetalVertex *verts = (CCMetalVertex *)alloca(sizeof(CCMetalVertex) * vertexDataCount_);
-			for (int i = 0; i < vertexDataCount_; i++) {
-				verts[i].position[0] = vertexData_[i].vertices.x;
-				verts[i].position[1] = vertexData_[i].vertices.y;
-				verts[i].position[2] = 0.0f;
-				verts[i].color[0] = vertexData_[i].colors.r;
-				verts[i].color[1] = vertexData_[i].colors.g;
-				verts[i].color[2] = vertexData_[i].colors.b;
-				verts[i].color[3] = vertexData_[i].colors.a;
-				verts[i].texCoords[0] = vertexData_[i].texCoords.u;
-				verts[i].texCoords[1] = vertexData_[i].texCoords.v;
-			}
-			CCMetalBlendMode blend = CCMetalBlendModePremultipliedAlpha;
-			ccBlendFunc bf = sprite_.blendFunc;
-			if (bf.src == GL_SRC_ALPHA && bf.dst == GL_ONE_MINUS_SRC_ALPHA)
-				blend = CCMetalBlendModeAlpha;
-			else if (bf.src == GL_SRC_ALPHA && bf.dst == GL_ONE)
-				blend = CCMetalBlendModeAdditive;
-
-			// Bar types use triangle strip; radial uses triangle fan.
-			// drawTriangleStripVertices works for both since Metal
-			// doesn't distinguish fans — we just submit as a strip
-			// (for bars it IS a strip, for fans the winding works
-			// the same with MTLPrimitiveTypeTriangleStrip when the
-			// first vertex is the center).
-			[metalRenderer drawTriangleStripVertices:verts
-											  count:(NSUInteger)vertexDataCount_
-											texture:metalTex
-										  blendMode:blend];
-			return;
+	// Metal renderer: convert ccV2F_C4B_T2F (2D pos) to
+	// CCMetalVertex (3D pos with z=0) and submit.
+	id<MTLTexture> metalTex = sprite_.texture.metalTexture;
+	if (metalTex && vertexDataCount_ > 0) {
+		CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
+		CCMetalVertex *verts = (CCMetalVertex *)alloca(sizeof(CCMetalVertex) * vertexDataCount_);
+		for (int i = 0; i < vertexDataCount_; i++) {
+			verts[i].position[0] = vertexData_[i].vertices.x;
+			verts[i].position[1] = vertexData_[i].vertices.y;
+			verts[i].position[2] = 0.0f;
+			verts[i].color[0] = vertexData_[i].colors.r;
+			verts[i].color[1] = vertexData_[i].colors.g;
+			verts[i].color[2] = vertexData_[i].colors.b;
+			verts[i].color[3] = vertexData_[i].colors.a;
+			verts[i].texCoords[0] = vertexData_[i].texCoords.u;
+			verts[i].texCoords[1] = vertexData_[i].texCoords.v;
 		}
+		CCMetalBlendMode blend = CCMetalBlendModePremultipliedAlpha;
+		ccBlendFunc bf = sprite_.blendFunc;
+		if (bf.src == GL_SRC_ALPHA && bf.dst == GL_ONE_MINUS_SRC_ALPHA)
+			blend = CCMetalBlendModeAlpha;
+		else if (bf.src == GL_SRC_ALPHA && bf.dst == GL_ONE)
+			blend = CCMetalBlendModeAdditive;
+		[metalRenderer drawTriangleStripVertices:verts
+										  count:(NSUInteger)vertexDataCount_
+										texture:metalTex
+									  blendMode:blend];
 	}
-
-	ccBlendFunc blendFunc = sprite_.blendFunc;
-	BOOL newBlend = blendFunc.src != CC_BLEND_SRC || blendFunc.dst != CC_BLEND_DST;
-	if( newBlend )
-		glBlendFunc( blendFunc.src, blendFunc.dst );
-
-	///	========================================================================
-	//	Replaced [texture_ drawAtPoint:CGPointZero] with my own vertexData
-	//	Everything above me and below me is copied from CCTextureNode's draw
-	glBindTexture(GL_TEXTURE_2D, sprite_.texture.name);
-	glVertexPointer(2, GL_FLOAT, sizeof(ccV2F_C4B_T2F), &vertexData_[0].vertices);
-	glTexCoordPointer(2, GL_FLOAT, sizeof(ccV2F_C4B_T2F), &vertexData_[0].texCoords);
-	glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(ccV2F_C4B_T2F), &vertexData_[0].colors);
-	if(type_ == kCCProgressTimerTypeRadialCCW || type_ == kCCProgressTimerTypeRadialCW){
-		glDrawArrays(GL_TRIANGLE_FAN, 0, vertexDataCount_);
-	} else if (type_ == kCCProgressTimerTypeHorizontalBarLR ||
-			   type_ == kCCProgressTimerTypeHorizontalBarRL ||
-			   type_ == kCCProgressTimerTypeVerticalBarBT ||
-			   type_ == kCCProgressTimerTypeVerticalBarTB) {
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, vertexDataCount_);
-	}
-	//glDrawElements(GL_TRIANGLES, indicesCount_, GL_UNSIGNED_BYTE, indices_);
-	///	========================================================================
-
-	if( newBlend )
-		glBlendFunc(CC_BLEND_SRC, CC_BLEND_DST);
 }
 @end

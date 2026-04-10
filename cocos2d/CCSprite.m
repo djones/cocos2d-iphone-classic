@@ -615,60 +615,24 @@ static SEL selSortMethod = NULL;
 	// means those draws go to MetalPresenter's slot FBO which nobody
 	// presents while CCMetalRenderer.active is YES — they're
 	// effectively invisible. Phase 4 will close that gap.
-	CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
-	if (metalRenderer.active) {
-		id<MTLTexture> metalTex = texture_.metalTexture;
-		if (metalTex) {
-			CCMetalBlendMode blend = CCMetalBlendModePremultipliedAlpha;
-			if (blendFunc_.src == GL_SRC_ALPHA && blendFunc_.dst == GL_ONE_MINUS_SRC_ALPHA) {
-				blend = CCMetalBlendModeAlpha;
-			} else if (blendFunc_.src == GL_SRC_ALPHA && blendFunc_.dst == GL_ONE) {
-				blend = CCMetalBlendModeAdditive;
-			} else if (blendFunc_.src == GL_ONE && blendFunc_.dst == GL_ZERO) {
-				blend = CCMetalBlendModeOpaque;
-			}
-			// ccV3F_C4B_T2F has the same layout as CCMetalVertex so
-			// we can pass the 4 quad vertices through as a cast.
-			[metalRenderer drawTexturedQuadVertices:(const CCMetalVertex *)&quad_
-											  texture:metalTex
-											blendMode:blend];
-			extern int gCocos2DDrawCallsThisFrame;
-			gCocos2DDrawCallsThisFrame++;
-			return;
-		}
+	// Metal renderer: emit a textured quad draw. ccV3F_C4B_T2F has
+	// the same memory layout as CCMetalVertex so the cast is safe.
+	id<MTLTexture> metalTex = texture_.metalTexture;
+	if (metalTex) {
+		CCMetalRenderer *metalRenderer = [CCMetalRenderer sharedRenderer];
+		CCMetalBlendMode blend = CCMetalBlendModePremultipliedAlpha;
+		if (blendFunc_.src == GL_SRC_ALPHA && blendFunc_.dst == GL_ONE_MINUS_SRC_ALPHA)
+			blend = CCMetalBlendModeAlpha;
+		else if (blendFunc_.src == GL_SRC_ALPHA && blendFunc_.dst == GL_ONE)
+			blend = CCMetalBlendModeAdditive;
+		else if (blendFunc_.src == GL_ONE && blendFunc_.dst == GL_ZERO)
+			blend = CCMetalBlendModeOpaque;
+		[metalRenderer drawTexturedQuadVertices:(const CCMetalVertex *)&quad_
+										texture:metalTex
+									  blendMode:blend];
+		extern int gCocos2DDrawCallsThisFrame;
+		gCocos2DDrawCallsThisFrame++;
 	}
-
-	// Default GL states: GL_TEXTURE_2D, GL_VERTEX_ARRAY, GL_COLOR_ARRAY, GL_TEXTURE_COORD_ARRAY
-	// Needed states: GL_TEXTURE_2D, GL_VERTEX_ARRAY, GL_COLOR_ARRAY, GL_TEXTURE_COORD_ARRAY
-	// Unneeded states: -
-
-	BOOL newBlend = blendFunc_.src != CC_BLEND_SRC || blendFunc_.dst != CC_BLEND_DST;
-	if( newBlend )
-		glBlendFunc( blendFunc_.src, blendFunc_.dst );
-
-#define kQuadSize sizeof(quad_.bl)
-	glBindTexture(GL_TEXTURE_2D, [texture_ name]);
-
-	long offset = (long)&quad_;
-
-	// vertex
-	NSInteger diff = offsetof( ccV3F_C4B_T2F, vertices);
-	glVertexPointer(3, GL_FLOAT, kQuadSize, (void*) (offset + diff) );
-
-	// color
-	diff = offsetof( ccV3F_C4B_T2F, colors);
-	glColorPointer(4, GL_UNSIGNED_BYTE, kQuadSize, (void*)(offset + diff));
-
-	// tex coords
-	diff = offsetof( ccV3F_C4B_T2F, texCoords);
-	glTexCoordPointer(2, GL_FLOAT, kQuadSize, (void*)(offset + diff));
-
-	extern int gCocos2DDrawCallsThisFrame;
-	gCocos2DDrawCallsThisFrame++;
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-	if( newBlend )
-		glBlendFunc(CC_BLEND_SRC, CC_BLEND_DST);
 
 #if CC_SPRITE_DEBUG_DRAW == 1
 	// draw bounding box
