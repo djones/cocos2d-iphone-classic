@@ -24,6 +24,7 @@
  */
 
 #import <Availability.h>
+#import <Metal/Metal.h>
 #import "CCRenderTexture.h"
 #import "CCDirector.h"
 #import "ccMacros.h"
@@ -165,13 +166,35 @@
 
 -(void)end
 {
+	// Phase 4: after the GL render-to-texture is done, sync the
+	// result into the Metal texture so it's visible when CCSprite
+	// samples it via the Metal renderer. This is a one-shot cost
+	// at load time (the terrain gradient is generated once).
+	// glReadPixels reads bottom-up; Metal stores top-down. The
+	// CCRenderTexture's sprite already has scaleY=-1 which flips
+	// the rendering, so the bottom-up Metal texture + flipped
+	// sprite = correct visual.
+	id<MTLTexture> mtex = texture_.metalTexture;
+	if (mtex) {
+		NSUInteger w = texture_.pixelsWide;
+		NSUInteger h = texture_.pixelsHigh;
+		void *pixels = malloc(w * h * 4);
+		if (pixels) {
+			// Read from the render texture's FBO (still bound here).
+			glReadPixels(0, 0, (GLsizei)w, (GLsizei)h,
+						 GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+			[mtex replaceRegion:MTLRegionMake2D(0, 0, w, h)
+					 mipmapLevel:0
+					   withBytes:pixels
+					 bytesPerRow:w * 4];
+			free(pixels);
+		}
+	}
+
 	ccglBindFramebuffer(CC_GL_FRAMEBUFFER, oldFBO_);
 	// Restore the original matrix and viewport
 	glPopMatrix();
 	// Restore the viewport that was active when -begin was called.
-	// (Was: glViewport(0, 0, displaySizeInPixels.width, .height) which
-	// always reset to winSizeInPixels and broke the Metal-presenter
-	// render-scale path.)
 	glViewport(oldViewport_[0], oldViewport_[1], oldViewport_[2], oldViewport_[3]);
 }
 
