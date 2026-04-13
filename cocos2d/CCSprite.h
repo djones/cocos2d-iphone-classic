@@ -131,6 +131,12 @@ typedef enum {
 
     BOOL useTrimmedFrameForAnchorPoint_;
 
+    // Per-sprite blur radius in texture pixels. Zero = no blur
+    // (the default). Distant background parallax sprites opt in via
+    // Background.mm to get an atmospheric haze via CCMetalRenderer's
+    // 9-tap Gaussian fragment shader.
+    float blurRadiusPx_;
+
 @public
 	// used internally
 	void (*updateMethod)(id, SEL);
@@ -166,6 +172,10 @@ typedef enum {
 @property (nonatomic,readwrite) BOOL flipY;
 /** opacity: conforms to CCRGBAProtocol protocol */
 @property (nonatomic,readwrite) GLubyte opacity;
+/** Gaussian-blur radius in texture pixels applied at draw time.
+ *  Zero disables blur (default). Only honoured by the Metal draw
+ *  path; ignored by the GL fallback. */
+@property (nonatomic,readwrite) float blurRadiusPx;
 /** RGB colors: conforms to CCRGBAProtocol protocol */
 @property (nonatomic,readwrite) ccColor3B color;
 /** whether or not the Sprite is rendered using a CCSpriteBatchNode */

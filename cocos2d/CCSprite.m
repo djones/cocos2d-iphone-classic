@@ -84,6 +84,7 @@ static SEL selSortMethod = NULL;
 @synthesize honorParentTransform = honorParentTransform_;
 @synthesize offsetPositionInPixels = offsetPositionInPixels_;
 @synthesize useTrimmedFrameForAnchorPoint = useTrimmedFrameForAnchorPoint_;
+@synthesize blurRadiusPx = blurRadiusPx_;
 
 +(id)spriteWithTexture:(CCTexture2D*)texture
 {
@@ -627,9 +628,16 @@ static SEL selSortMethod = NULL;
 			blend = CCMetalBlendModeAdditive;
 		else if (blendFunc_.src == GL_ONE && blendFunc_.dst == GL_ZERO)
 			blend = CCMetalBlendModeOpaque;
-		[metalRenderer drawTexturedQuadVertices:(const CCMetalVertex *)&quad_
-										texture:metalTex
-									  blendMode:blend];
+		if (blurRadiusPx_ > 0.0f) {
+			[metalRenderer drawBlurredTexturedQuadVertices:(const CCMetalVertex *)&quad_
+												   texture:metalTex
+												 blendMode:blend
+											  blurRadiusPx:blurRadiusPx_];
+		} else {
+			[metalRenderer drawTexturedQuadVertices:(const CCMetalVertex *)&quad_
+											texture:metalTex
+										  blendMode:blend];
+		}
 		extern int gCocos2DDrawCallsThisFrame;
 		gCocos2DDrawCallsThisFrame++;
 	}
